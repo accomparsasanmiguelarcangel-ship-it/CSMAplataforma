@@ -139,7 +139,18 @@ export const useStore = () => {
 }
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
-  const [db, setDb] = useState<DBShape>(() => load())
+  const [db, setDb] = useState<DBShape>(() => {
+    const initial = load()
+    if (!supabase) return initial
+    // Con Supabase configurado, nunca mostrar ni persistir participantes semilla/locales.
+    return {
+      ...initial,
+      formFields: [], profiles: [], participants: [], payments: [], paymentReviews: [],
+      events: [], sessions: [], attendance: [], documents: [], announcements: [],
+      notifications: [], audit: [], duplicates: [], counter: 0,
+      session: { profileId: null },
+    }
+  })
   const [ready, setReady] = useState(false)
   const dbRef = useRef(db)
   dbRef.current = db
@@ -166,7 +177,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           try { localStorage.removeItem(KEY + '.session') } catch { /* noop */ }
         }
         const remote = await cloudLoad()
-        if (remote && alive && remote.participants?.length) {
+        if (remote && alive) {
+          // La respuesta de Supabase es la fuente de verdad, incluso si no hay participantes.
           setDb((prev) => ({ ...prev, ...remote, session: prev.session }))
         }
       }
