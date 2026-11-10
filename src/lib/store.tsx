@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { buildSeed } from './seed'
 import { cloud, cloudLoad } from './remote'
+import { qrDataUrl } from './qr'
 import { isDemo, supabase } from './supabase'
 import type {
   Account, Announcement, Attendance, AttendanceStatus, CurrentUser, DashboardStats, DBShape,
@@ -156,9 +157,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ;(async () => {
       if (supabase) {
         const { data } = await supabase.auth.getSession()
-        if (data.session?.user?.email && alive) {
-          const found = dbRef.current.profiles.find((p) => p.email.toLowerCase() === data.session!.user!.email!.toLowerCase())
-          if (found) setSessionProfileId(found.id)
+        if (data.session?.user?.id && alive) {
+          setSessionProfileId(data.session.user.id)
+          try { localStorage.setItem(KEY + '.session', data.session.user.id) } catch { /* noop */ }
+        } else if (alive) {
+          // Limpia IDs locales antiguos (no UUID Auth) que pudo dejar el flujo previo.
+          setSessionProfileId(null)
+          try { localStorage.removeItem(KEY + '.session') } catch { /* noop */ }
         }
         const remote = await cloudLoad()
         if (remote && alive && remote.participants?.length) {
@@ -213,13 +218,114 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const clean = email.trim().toLowerCase()
     if (supabase) {
-      const { error } = await supabase.auth.signInWithPassword({ email: clean, password })
+      const { data, error } = await supabase.auth.signInWithPassword({ email: clean, password })
       if (error) return { ok: false, error: error.message }
+      if (!data.user) return { ok: false, error: 'Supabase no devolvió el usuario autenticado.' }
+
+      const { data: profileRow, error: profileError } = await supabase
+        .from('profiles').select('*').eq('id', data.user.id).single()
+      if (profileError || !profileRow) {
+        return { ok: false, error: 'Tu cuenta inició sesión, pero no encontramos tu perfil. Comprueba que la migración de inscripción esté aplicada en Supabase.' }
+      }
+      if (!profileRow.active) {
+        await supabase.auth.signOut()
+        return { ok: false, error: 'La cuenta está deshabilitada. Contacta a la directiva.' }
+      }
+
+      const { data: participantRow, error: participantError } = await supabase
+        .from('participants').select('*').eq('profile_id', data.user.id).maybeSingle()
+      if (participantError) return { ok: false, error: participantError.message }
+      if (!participantRow) return { ok: false, error: 'Tu usuario no tiene una ficha de participante vinculada. La directiva debe revisar la inscripción.' }
+
+      const participant = participantRow as Participant & { photo_storage_path?: string | null; qr_drive_id?: string | null }
+      const warnings: string[] = []
+      const selfieKey = 'csma.pendingSelfie.' + data.user.id
+
+      try {
+        const selfie = localStorage.getItem(selfieKey)
+        if (selfie) {
+          const blob = await (await fetch(selfie)).blob()
+          const photoPath = `participantes/${participant.code}/${participant.code}_SELFIE.jpg`
+          const upload = await supabase.storage.from('private-files').upload(photoPath, blob, {
+            upsert: true, contentType: 'image/jpeg',
+          })
+          if (upload.error) {
+            warnings.push('La selfie no pudo guardarse en Supabase Storage: ' + upload.error.message)
+          } else {
+            const { error: rowError } = await supabase.from('participants').update({
+              photo_storage_path: photoPath,
+            }).eq('id', participant.id)
+            if (rowError) warnings.push('La selfie se guardó, pero no se pudo actualizar su ficha: ' + rowError.message)
+            else participant.photo_storage_path = photoPath
+
+            const { data: driveData, error: driveError } = await supabase.functions.invoke('drive-sync', {
+              body: {
+                code: participant.code, kind: 'selfie', storagePath: photoPath,
+                participantId: participant.id, fileName: `${participant.code}_SELFIE.jpg`,
+              },
+            })
+            if (driveError || driveData?.error || driveData?.ok !== true) {
+              warnings.push('La selfie está en Supabase Storage, pero no llegó a Google Drive: ' + (driveError?.message || driveData?.error || 'respuesta no confirmada'))
+            } else {
+              localStorage.removeItem(selfieKey)
+              participant.photo_drive_id = driveData.fileId || driveData.name
+            }
+          }
+        }
+      } catch (e) {
+        warnings.push('No se pudo completar la carga de la selfie: ' + (e instanceof Error ? e.message : String(e)))
+      }
+
+      if (!participant.qr_drive_id) {
+        try {
+          const qrUrl = await qrDataUrl(participant.qr_token, 640)
+          const qrBlob = await (await fetch(qrUrl)).blob()
+          const qrPath = `participantes/${participant.code}/${participant.code}_QR.png`
+          const upload = await supabase.storage.from('private-files').upload(qrPath, qrBlob, {
+            upsert: true, contentType: 'image/png',
+          })
+          if (upload.error) {
+            warnings.push('No se pudo guardar el QR en Supabase Storage: ' + upload.error.message)
+          } else {
+            const { data: driveData, error: driveError } = await supabase.functions.invoke('drive-sync', {
+              body: {
+                code: participant.code, kind: 'qr', storagePath: qrPath,
+                participantId: participant.id, fileName: `${participant.code}_QR.png`,
+              },
+            })
+            if (driveError || driveData?.error || driveData?.ok !== true) {
+              warnings.push('El QR se guardó en Supabase, pero no llegó a Google Drive: ' + (driveError?.message || driveData?.error || 'respuesta no confirmada'))
+            } else {
+              participant.qr_drive_id = driveData.fileId || driveData.name
+            }
+          }
+        } catch (e) {
+          warnings.push('No se pudo sincronizar el QR con Google Drive: ' + (e instanceof Error ? e.message : String(e)))
+        }
+      }
+
+      let photoUrl: string | null = null
+      if (participant.photo_storage_path) {
+        const { data: signed, error: signedError } = await supabase.storage
+          .from('private-files').createSignedUrl(participant.photo_storage_path, 3600)
+        if (!signedError) photoUrl = signed.signedUrl
+        else warnings.push('No se pudo mostrar la selfie guardada: ' + signedError.message)
+      }
+      const profile = profileRow as Profile
+      const participantForUi = { ...participant, photo_url: photoUrl } as Participant
+      setDb((prev) => ({
+        ...prev,
+        profiles: [profile, ...prev.profiles.filter((p) => p.id !== profile.id)],
+        participants: [participantForUi, ...prev.participants.filter((p) => p.id !== participant.id)],
+      }))
+      persistSession(profile.id)
+      return { ok: true, warning: warnings.length ? warnings.join(' ') : undefined }
     }
+
     const found = dbRef.current.profiles.find((p) => p.email.toLowerCase() === clean)
     if (!found) return { ok: false, error: 'No existe una cuenta con ese correo.' }
     if (!found.active) return { ok: false, error: 'La cuenta está deshabilitada. Contacta a la directiva.' }
-    if (!supabase && password.length < 4) return { ok: false, error: 'Contraseña incorrecta.' }
+    if (password.length < 4) return { ok: false, error: 'Contraseña incorrecta.' }
     persistSession(found.id)
     return { ok: true }
   }, [])
@@ -241,7 +347,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (dni.length !== 8) return { ok: false, error: 'El DNI debe tener 8 dígitos.' }
     if (!input.photoDataUrl) return { ok: false, error: 'La selfie es obligatoria para completar la inscripción.' }
 
-    const dupParticipant = cur.participants.find((p) => p.dni === dni)
+    const dupParticipant = !supabase ? cur.participants.find((p) => p.dni === dni) : undefined
     if (dupParticipant) {
       const flag: DuplicateFlag = {
         id: uid('dup'), dni, attempted_at: nowISO(), first_names: input.first_names,
@@ -250,29 +356,45 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setDb((prev) => ({ ...prev, duplicates: [flag, ...prev.duplicates] }))
       return { ok: false, error: `El DNI ${dni} ya está registrado con el código ${dupParticipant.code}. La directiva revisará el caso.` }
     }
-    const dupProfile = cur.profiles.find((p) => p.email.toLowerCase() === input.email.trim().toLowerCase())
+    const dupProfile = !supabase ? cur.profiles.find((p) => p.email.toLowerCase() === input.email.trim().toLowerCase()) : undefined
     if (dupProfile) return { ok: false, error: 'Ese correo ya tiene una cuenta. Inicia sesión.' }
+
+    if (supabase) {
+      const { data, error } = await supabase.auth.signUp({
+        email: input.email.trim().toLowerCase(),
+        password: input.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}login`,
+          data: {
+            registration_source: 'csma_public_registration',
+            first_names: input.first_names.trim(),
+            last_names: input.last_names.trim(),
+            dni,
+            phone: input.phone.trim(),
+            address: input.address.trim(),
+            group_name: input.group_name.trim(),
+            extra: input.extra || {},
+          },
+        },
+      })
+      if (error) return { ok: false, error: error.message }
+      if (!data.user) return { ok: false, error: 'Supabase no devolvió el usuario creado.' }
+      if (data.user.identities?.length === 0) return { ok: false, error: 'Ese correo ya está registrado. Inicia sesión.' }
+      try {
+        localStorage.setItem('csma.pendingSelfie.' + data.user.id, input.photoDataUrl)
+      } catch {
+        // La cuenta ya quedó creada por el trigger; no reportamos un fallo de inscripción.
+        console.warn('No se pudo guardar temporalmente la selfie en este navegador.')
+      }
+      // El trigger SQL crea profile y participant con el UUID real, aunque la
+      // confirmación del correo todavía esté pendiente.
+      return { ok: true, code: 'CONFIRM_EMAIL', participantId: data.user.id }
+    }
 
     const counter = cur.counter + 1
     const code = `${cur.settings.code_prefix}-${String(counter).padStart(4, '0')}`
     const participantId = uid('p')
     const profileId = uid('u')
-
-    if (supabase) {
-      const { data, error } = await supabase.auth.signUp({ email: input.email.trim(), password: input.password })
-      if (error) return { ok: false, error: error.message }
-      if (data.user) {
-        // La foto se sube al bucket privado y luego la Edge Function la replica a Drive
-        try {
-          const blob = await (await fetch(input.photoDataUrl)).blob()
-          const path = `participantes/${code}/${code}_SELFIE.jpg`
-          const up = await supabase.storage.from('private-files').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
-          if (!up.error) {
-            await supabase.functions.invoke('drive-sync', { body: { code, kind: 'selfie', storagePath: path } })
-          }
-        } catch { /* se reintenta desde el panel administrativo */ }
-      }
-    }
 
     const photo = input.photoDataUrl
     const newP: Participant = {
@@ -320,8 +442,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       next.audit = [audit(prev, 'participant.register', 'participants', participantId, null, { code, dni }), ...next.audit]
       return next
     })
-    cloud.profile(newProfile)
-    cloud.upsertParticipant(newP)
+    // En modo demostración se mantiene la sesión local.
     persistSession(profileId)
     return { ok: true, code, participantId }
   }, [])
