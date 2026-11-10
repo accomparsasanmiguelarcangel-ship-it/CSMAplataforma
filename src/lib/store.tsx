@@ -159,6 +159,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (data.session?.user?.id && alive) {
           setSessionProfileId(data.session.user.id)
           try { localStorage.setItem(KEY + '.session', data.session.user.id) } catch { /* noop */ }
+        } else if (alive) {
+          // Limpia IDs locales antiguos (no UUID Auth) que pudo dejar el flujo previo.
+          setSessionProfileId(null)
+          try { localStorage.removeItem(KEY + '.session') } catch { /* noop */ }
         }
         const remote = await cloudLoad()
         if (remote && alive && remote.participants?.length) {
