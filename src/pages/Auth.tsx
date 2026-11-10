@@ -179,7 +179,7 @@ export function Register() {
     const res = await register({ ...form, photoDataUrl: photo, extra: form.extra })
     setBusy(false)
     if (!res.ok) { setErr(res.error || 'No se pudo completar la inscripción.'); return }
-    setDone(res.code || '')
+    setDone(res.code || 'CONFIRM_EMAIL')
   }
 
   if (done) {
@@ -191,18 +191,36 @@ export function Register() {
               <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'var(--ok-soft)', color: 'var(--ok)', display: 'grid', placeItems: 'center' }}>
                 <Icon name="check" size={30} />
               </div>
-              <h1>Inscripción registrada</h1>
-              <p className="muted">Tu código único de participante es:</p>
-              <div className="mono" style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '.06em', color: 'var(--green-mid)' }}>{done}</div>
-              <div className="banner info" style={{ textAlign: 'left' }}>
-                <Icon name="info" size={16} />
-                <div>
-                  <strong>Siguientes pasos</strong>
-                  Tu ficha quedó en estado <b>pendiente de revisión</b>. La directiva validará tu selfie y tus datos.
-                  Después podrás enviar tu adelanto por Yape, usar tu credencial QR y acceder a la documentación.
-                </div>
-              </div>
-              <button className="btn btn-primary btn-block" onClick={() => nav('/app')}>Ir a mi cuenta</button>
+              {done === 'CONFIRM_EMAIL' ? (
+                <>
+                  <h1>Confirma tu correo electrónico</h1>
+                  <div className="banner info" style={{ textAlign: 'left' }}>
+                    <Icon name="info" size={16} />
+                    <div>
+                      <strong>Tu inscripción fue creada</strong>
+                      Enviamos un enlace de confirmación a tu correo. Abre ese mensaje y confirma tu dirección.
+                      Después vuelve a esta página e inicia sesión. Tu ficha ya quedó registrada con estado
+                      <b> pendiente de revisión</b>. Para completar la selfie, inicia sesión desde este mismo navegador.
+                    </div>
+                  </div>
+                  <button className="btn btn-primary btn-block" onClick={() => nav('/login')}>Ir a iniciar sesión</button>
+                </>
+              ) : (
+                <>
+                  <h1>Inscripción registrada</h1>
+                  <p className="muted">Tu código único de participante es:</p>
+                  <div className="mono" style={{ fontSize: '1.6rem', fontWeight: 800, letterSpacing: '.06em', color: 'var(--green-mid)' }}>{done}</div>
+                  <div className="banner info" style={{ textAlign: 'left' }}>
+                    <Icon name="info" size={16} />
+                    <div>
+                      <strong>Siguientes pasos</strong>
+                      Tu ficha quedó en estado <b>pendiente de revisión</b>. La directiva validará tu selfie y tus datos.
+                      Después podrás enviar tu adelanto por Yape, usar tu credencial QR y acceder a la documentación.
+                    </div>
+                  </div>
+                  <button className="btn btn-primary btn-block" onClick={() => nav('/app')}>Ir a mi cuenta</button>
+                </>
+              )}
             </div>
           </div>
         </div>

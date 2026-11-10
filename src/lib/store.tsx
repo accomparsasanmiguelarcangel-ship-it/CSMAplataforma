@@ -156,9 +156,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ;(async () => {
       if (supabase) {
         const { data } = await supabase.auth.getSession()
-        if (data.session?.user?.email && alive) {
-          const found = dbRef.current.profiles.find((p) => p.email.toLowerCase() === data.session!.user!.email!.toLowerCase())
-          if (found) setSessionProfileId(found.id)
+        if (data.session?.user?.id && alive) {
+          setSessionProfileId(data.session.user.id)
+          try { localStorage.setItem(KEY + '.session', data.session.user.id) } catch { /* noop */ }
         }
         const remote = await cloudLoad()
         if (remote && alive && remote.participants?.length) {
@@ -213,13 +213,69 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const clean = email.trim().toLowerCase()
     if (supabase) {
-      const { error } = await supabase.auth.signInWithPassword({ email: clean, password })
+      const { data, error } = await supabase.auth.signInWithPassword({ email: clean, password })
       if (error) return { ok: false, error: error.message }
+      if (!data.user) return { ok: false, error: 'Supabase no devolvió el usuario autenticado.' }
+
+      const { data: profileRow, error: profileError } = await supabase
+        .from('profiles').select('*').eq('id', data.user.id).single()
+      if (profileError || !profileRow) {
+        return { ok: false, error: 'Tu cuenta inició sesión, pero no encontramos tu perfil. Contacta a la directiva.' }
+      }
+      if (!profileRow.active) {
+        await supabase.auth.signOut()
+        return { ok: false, error: 'La cuenta está deshabilitada. Contacta a la directiva.' }
+      }
+
+      const { data: participantRow, error: participantError } = await supabase
+        .from('participants').select('*').eq('profile_id', data.user.id).maybeSingle()
+      if (participantError) return { ok: false, error: participantError.message }
+
+      const profile = profileRow as Profile
+      const participant = participantRow as Participant | null
+      setDb((prev) => ({
+        ...prev,
+        profiles: [profile, ...prev.profiles.filter((p) => p.id !== profile.id)],
+        participants: participant
+          ? [participant, ...prev.participants.filter((p) => p.id !== participant.id)]
+          : prev.participants,
+      }))
+      persistSession(profile.id)
+
+      // La selfie queda temporalmente en este navegador hasta que se confirme el correo
+      // y exista una sesión autenticada para subirla al bucket privado.
+      if (participant) {
+        const selfieKey = 'csma.pendingSelfie.' + data.user.id
+        try {
+          const selfie = localStorage.getItem(selfieKey)
+          if (selfie) {
+            const blob = await (await fetch(selfie)).blob()
+            const path = `participantes/${participant.code}/${participant.code}_SELFIE.jpg`
+            const upload = await supabase.storage.from('private-files').upload(path, blob, {
+              upsert: true, contentType: 'image/jpeg',
+            })
+            if (!upload.error) {
+              await supabase.from('participants').update({
+                photo_storage_path: path,
+                photo_drive_id: `${participant.code}_SELFIE.jpg`,
+              }).eq('id', participant.id)
+              await supabase.functions.invoke('drive-sync', {
+                body: { code: participant.code, kind: 'selfie', storagePath: path },
+              })
+              localStorage.removeItem(selfieKey)
+            }
+          }
+        } catch (photoError) {
+          console.warn('No se pudo completar la carga de la selfie; se podrá reintentar.', photoError)
+        }
+      }
+      return { ok: true }
     }
+
     const found = dbRef.current.profiles.find((p) => p.email.toLowerCase() === clean)
     if (!found) return { ok: false, error: 'No existe una cuenta con ese correo.' }
     if (!found.active) return { ok: false, error: 'La cuenta está deshabilitada. Contacta a la directiva.' }
-    if (!supabase && password.length < 4) return { ok: false, error: 'Contraseña incorrecta.' }
+    if (password.length < 4) return { ok: false, error: 'Contraseña incorrecta.' }
     persistSession(found.id)
     return { ok: true }
   }, [])
@@ -241,7 +297,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     if (dni.length !== 8) return { ok: false, error: 'El DNI debe tener 8 dígitos.' }
     if (!input.photoDataUrl) return { ok: false, error: 'La selfie es obligatoria para completar la inscripción.' }
 
-    const dupParticipant = cur.participants.find((p) => p.dni === dni)
+    const dupParticipant = !supabase ? cur.participants.find((p) => p.dni === dni) : undefined
     if (dupParticipant) {
       const flag: DuplicateFlag = {
         id: uid('dup'), dni, attempted_at: nowISO(), first_names: input.first_names,
@@ -250,29 +306,44 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setDb((prev) => ({ ...prev, duplicates: [flag, ...prev.duplicates] }))
       return { ok: false, error: `El DNI ${dni} ya está registrado con el código ${dupParticipant.code}. La directiva revisará el caso.` }
     }
-    const dupProfile = cur.profiles.find((p) => p.email.toLowerCase() === input.email.trim().toLowerCase())
+    const dupProfile = !supabase ? cur.profiles.find((p) => p.email.toLowerCase() === input.email.trim().toLowerCase()) : undefined
     if (dupProfile) return { ok: false, error: 'Ese correo ya tiene una cuenta. Inicia sesión.' }
+
+    if (supabase) {
+      const { data, error } = await supabase.auth.signUp({
+        email: input.email.trim().toLowerCase(),
+        password: input.password,
+        options: {
+          data: {
+            registration_source: 'csma_public_registration',
+            first_names: input.first_names.trim(),
+            last_names: input.last_names.trim(),
+            dni,
+            phone: input.phone.trim(),
+            address: input.address.trim(),
+            group_name: input.group_name.trim(),
+            extra: input.extra || {},
+          },
+        },
+      })
+      if (error) return { ok: false, error: error.message }
+      if (!data.user) return { ok: false, error: 'Supabase no devolvió el usuario creado.' }
+      if (data.user.identities?.length === 0) return { ok: false, error: 'Ese correo ya está registrado. Inicia sesión.' }
+      try {
+        localStorage.setItem('csma.pendingSelfie.' + data.user.id, input.photoDataUrl)
+      } catch {
+        // La cuenta ya quedó creada por el trigger; no reportamos un fallo de inscripción.
+        console.warn('No se pudo guardar temporalmente la selfie en este navegador.')
+      }
+      // El trigger SQL crea profile y participant con el UUID real, aunque la
+      // confirmación del correo todavía esté pendiente.
+      return { ok: true, code: 'CONFIRM_EMAIL', participantId: data.user.id }
+    }
 
     const counter = cur.counter + 1
     const code = `${cur.settings.code_prefix}-${String(counter).padStart(4, '0')}`
     const participantId = uid('p')
     const profileId = uid('u')
-
-    if (supabase) {
-      const { data, error } = await supabase.auth.signUp({ email: input.email.trim(), password: input.password })
-      if (error) return { ok: false, error: error.message }
-      if (data.user) {
-        // La foto se sube al bucket privado y luego la Edge Function la replica a Drive
-        try {
-          const blob = await (await fetch(input.photoDataUrl)).blob()
-          const path = `participantes/${code}/${code}_SELFIE.jpg`
-          const up = await supabase.storage.from('private-files').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
-          if (!up.error) {
-            await supabase.functions.invoke('drive-sync', { body: { code, kind: 'selfie', storagePath: path } })
-          }
-        } catch { /* se reintenta desde el panel administrativo */ }
-      }
-    }
 
     const photo = input.photoDataUrl
     const newP: Participant = {
@@ -320,8 +391,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       next.audit = [audit(prev, 'participant.register', 'participants', participantId, null, { code, dni }), ...next.audit]
       return next
     })
-    cloud.profile(newProfile)
-    cloud.upsertParticipant(newP)
+    // En modo demostración se mantiene la sesión local.
     persistSession(profileId)
     return { ok: true, code, participantId }
   }, [])
