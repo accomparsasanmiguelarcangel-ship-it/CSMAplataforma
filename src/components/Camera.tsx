@@ -22,6 +22,19 @@ export function SelfieCapture({ value, onChange }: { value: string | null; onCha
 
   useEffect(() => () => stop(), [])
 
+  useEffect(() => {
+    if (state !== 'live') return
+    const video = videoRef.current
+    const stream = streamRef.current
+    if (!video || !stream) return
+    video.srcObject = stream
+    video.play().catch((e) => {
+      stop()
+      setError(e instanceof Error ? e.message : 'No se pudo reproducir la cámara.')
+      setState('error')
+    })
+  }, [state])
+
   const start = async () => {
     setState('starting')
     setError('')
@@ -33,10 +46,8 @@ export function SelfieCapture({ value, onChange }: { value: string | null; onCha
         audio: false,
       })
       streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-      }
+      // El video se monta cuando state pasa a "live". La conexión se realiza
+      // en el efecto de abajo, después de que React haya creado el elemento.
       setState('live')
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'No se pudo abrir la cámara.'
@@ -158,6 +169,21 @@ export function QrScanner({ onDetected, onError }: { onDetected: (raw: string) =
 
   useEffect(() => () => stop(), [])
 
+  useEffect(() => {
+    if (!live) return
+    const video = videoRef.current
+    const stream = streamRef.current
+    if (!video || !stream) return
+    video.srcObject = stream
+    video.play().then(() => tick()).catch((e) => {
+      stop()
+      const message = e instanceof Error ? e.message : 'No se pudo reproducir la cámara.'
+      setMsg(message)
+      onError?.(message)
+    })
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [live])
+
   const start = async () => {
     setMsg('')
     try {
@@ -166,12 +192,9 @@ export function QrScanner({ onDetected, onError }: { onDetected: (raw: string) =
         audio: false,
       })
       streamRef.current = stream
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        await videoRef.current.play()
-      }
+      // El video solo se renderiza cuando live=true; el efecto lo conecta
+      // una vez que React haya montado el elemento.
       setLive(true)
-      tick()
     } catch (e) {
       const m = e instanceof Error ? e.message : 'No se pudo abrir la cámara.'
       setMsg(/NotAllowed|Permission|denied/i.test(m) ? 'Permiso de cámara denegado. Habilítalo en el navegador.' : m)
