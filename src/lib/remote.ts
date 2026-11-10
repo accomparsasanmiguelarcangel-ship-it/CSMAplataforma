@@ -38,6 +38,13 @@ export async function cloudLoad(): Promise<Partial<DBShape> | null> {
         supabase.from('form_fields').select('*'),
       ])
 
+    const responses = [profiles, participants, payments, reviews, events, sessions, attendance, documents, announcements, notifications, audit, settings, fields]
+    const failed = responses.filter((r) => r.error)
+    if (failed.length) {
+      console.error('No se pudo cargar la base de datos desde Supabase:', failed.map((r) => r.error?.message))
+      return null
+    }
+
     const g = <T,>(r: { data: Row[] | null }): T[] => ((r.data || []) as unknown) as T[]
 
     return {
