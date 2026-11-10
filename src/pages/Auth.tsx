@@ -68,6 +68,7 @@ export function Login() {
     const res = await login(email, password)
     setBusy(false)
     if (!res.ok) { setErr(res.error || 'No se pudo iniciar sesión.'); return }
+    if ('warning' in res && res.warning) window.alert(res.warning)
     const p = db.profiles.find((x) => x.email.toLowerCase() === email.trim().toLowerCase())
     go(p?.role || 'participante')
   }

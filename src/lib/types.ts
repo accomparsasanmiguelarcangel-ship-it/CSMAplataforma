@@ -36,6 +36,8 @@ export interface Participant {
   group_name: string
   photo_url: string | null
   photo_drive_id: string | null
+  qr_drive_id?: string | null
+  photo_storage_path?: string | null
   status: EnrollmentStatus
   qr_token: string
   created_at: string

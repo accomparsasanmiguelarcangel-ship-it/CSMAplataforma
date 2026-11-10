@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { buildSeed } from './seed'
 import { cloud, cloudLoad } from './remote'
+import { qrDataUrl } from './qr'
 import { isDemo, supabase } from './supabase'
 import type {
   Account, Announcement, Attendance, AttendanceStatus, CurrentUser, DashboardStats, DBShape,
@@ -224,7 +225,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const { data: profileRow, error: profileError } = await supabase
         .from('profiles').select('*').eq('id', data.user.id).single()
       if (profileError || !profileRow) {
-        return { ok: false, error: 'Tu cuenta inició sesión, pero no encontramos tu perfil. Contacta a la directiva.' }
+        return { ok: false, error: 'Tu cuenta inició sesión, pero no encontramos tu perfil. Comprueba que la migración de inscripción esté aplicada en Supabase.' }
       }
       if (!profileRow.active) {
         await supabase.auth.signOut()
@@ -234,46 +235,91 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const { data: participantRow, error: participantError } = await supabase
         .from('participants').select('*').eq('profile_id', data.user.id).maybeSingle()
       if (participantError) return { ok: false, error: participantError.message }
+      if (!participantRow) return { ok: false, error: 'Tu usuario no tiene una ficha de participante vinculada. La directiva debe revisar la inscripción.' }
 
+      const participant = participantRow as Participant & { photo_storage_path?: string | null; qr_drive_id?: string | null }
+      const warnings: string[] = []
+      const selfieKey = 'csma.pendingSelfie.' + data.user.id
+
+      try {
+        const selfie = localStorage.getItem(selfieKey)
+        if (selfie) {
+          const blob = await (await fetch(selfie)).blob()
+          const photoPath = `participantes/${participant.code}/${participant.code}_SELFIE.jpg`
+          const upload = await supabase.storage.from('private-files').upload(photoPath, blob, {
+            upsert: true, contentType: 'image/jpeg',
+          })
+          if (upload.error) {
+            warnings.push('La selfie no pudo guardarse en Supabase Storage: ' + upload.error.message)
+          } else {
+            const { error: rowError } = await supabase.from('participants').update({
+              photo_storage_path: photoPath,
+            }).eq('id', participant.id)
+            if (rowError) warnings.push('La selfie se guardó, pero no se pudo actualizar su ficha: ' + rowError.message)
+            else participant.photo_storage_path = photoPath
+
+            const { data: driveData, error: driveError } = await supabase.functions.invoke('drive-sync', {
+              body: {
+                code: participant.code, kind: 'selfie', storagePath: photoPath,
+                participantId: participant.id, fileName: `${participant.code}_SELFIE.jpg`,
+              },
+            })
+            if (driveError || driveData?.error || driveData?.ok !== true) {
+              warnings.push('La selfie está en Supabase Storage, pero no llegó a Google Drive: ' + (driveError?.message || driveData?.error || 'respuesta no confirmada'))
+            } else {
+              localStorage.removeItem(selfieKey)
+              participant.photo_drive_id = driveData.fileId || driveData.name
+            }
+          }
+        }
+      } catch (e) {
+        warnings.push('No se pudo completar la carga de la selfie: ' + (e instanceof Error ? e.message : String(e)))
+      }
+
+      if (!participant.qr_drive_id) {
+        try {
+          const qrUrl = await qrDataUrl(participant.qr_token, 640)
+          const qrBlob = await (await fetch(qrUrl)).blob()
+          const qrPath = `participantes/${participant.code}/${participant.code}_QR.png`
+          const upload = await supabase.storage.from('private-files').upload(qrPath, qrBlob, {
+            upsert: true, contentType: 'image/png',
+          })
+          if (upload.error) {
+            warnings.push('No se pudo guardar el QR en Supabase Storage: ' + upload.error.message)
+          } else {
+            const { data: driveData, error: driveError } = await supabase.functions.invoke('drive-sync', {
+              body: {
+                code: participant.code, kind: 'qr', storagePath: qrPath,
+                participantId: participant.id, fileName: `${participant.code}_QR.png`,
+              },
+            })
+            if (driveError || driveData?.error || driveData?.ok !== true) {
+              warnings.push('El QR se guardó en Supabase, pero no llegó a Google Drive: ' + (driveError?.message || driveData?.error || 'respuesta no confirmada'))
+            } else {
+              participant.qr_drive_id = driveData.fileId || driveData.name
+            }
+          }
+        } catch (e) {
+          warnings.push('No se pudo sincronizar el QR con Google Drive: ' + (e instanceof Error ? e.message : String(e)))
+        }
+      }
+
+      let photoUrl: string | null = null
+      if (participant.photo_storage_path) {
+        const { data: signed, error: signedError } = await supabase.storage
+          .from('private-files').createSignedUrl(participant.photo_storage_path, 3600)
+        if (!signedError) photoUrl = signed.signedUrl
+        else warnings.push('No se pudo mostrar la selfie guardada: ' + signedError.message)
+      }
       const profile = profileRow as Profile
-      const participant = participantRow as Participant | null
+      const participantForUi = { ...participant, photo_url: photoUrl } as Participant
       setDb((prev) => ({
         ...prev,
         profiles: [profile, ...prev.profiles.filter((p) => p.id !== profile.id)],
-        participants: participant
-          ? [participant, ...prev.participants.filter((p) => p.id !== participant.id)]
-          : prev.participants,
+        participants: [participantForUi, ...prev.participants.filter((p) => p.id !== participant.id)],
       }))
       persistSession(profile.id)
-
-      // La selfie queda temporalmente en este navegador hasta que se confirme el correo
-      // y exista una sesión autenticada para subirla al bucket privado.
-      if (participant) {
-        const selfieKey = 'csma.pendingSelfie.' + data.user.id
-        try {
-          const selfie = localStorage.getItem(selfieKey)
-          if (selfie) {
-            const blob = await (await fetch(selfie)).blob()
-            const path = `participantes/${participant.code}/${participant.code}_SELFIE.jpg`
-            const upload = await supabase.storage.from('private-files').upload(path, blob, {
-              upsert: true, contentType: 'image/jpeg',
-            })
-            if (!upload.error) {
-              await supabase.from('participants').update({
-                photo_storage_path: path,
-                photo_drive_id: `${participant.code}_SELFIE.jpg`,
-              }).eq('id', participant.id)
-              await supabase.functions.invoke('drive-sync', {
-                body: { code: participant.code, kind: 'selfie', storagePath: path },
-              })
-              localStorage.removeItem(selfieKey)
-            }
-          }
-        } catch (photoError) {
-          console.warn('No se pudo completar la carga de la selfie; se podrá reintentar.', photoError)
-        }
-      }
-      return { ok: true }
+      return { ok: true, warning: warnings.length ? warnings.join(' ') : undefined }
     }
 
     const found = dbRef.current.profiles.find((p) => p.email.toLowerCase() === clean)

@@ -169,8 +169,26 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const kind = body.kind as 'selfie' | 'receipt' | 'document' | 'report'
+    const kind = body.kind as 'selfie' | 'qr' | 'receipt' | 'document' | 'report'
     const cache: FolderMap = body.folderCache || {}
+
+    // Los medios solo pueden sincronizarse por su dueño autenticado o por directiva.
+    if (kind === 'selfie' || kind === 'qr') {
+      if (!body.participantId || !body.code || !body.storagePath) {
+        return new Response(JSON.stringify({ error: 'Faltan participantId, code o storagePath.' }), { status: 400, headers: cors })
+      }
+      const [{ data: participant, error: participantError }, { data: profile }] = await Promise.all([
+        admin.from('participants').select('id, profile_id, code').eq('id', body.participantId).maybeSingle(),
+        admin.from('profiles').select('role, active').eq('id', userRes.user.id).maybeSingle(),
+      ])
+      if (participantError || !participant || !profile?.active) {
+        return new Response(JSON.stringify({ error: 'Participante o perfil no válido.' }), { status: 403, headers: cors })
+      }
+      const staff = profile.role === 'superadmin' || profile.role === 'admin'
+      if ((!staff && participant.profile_id !== userRes.user.id) || participant.code !== body.code) {
+        return new Response(JSON.stringify({ error: 'No tienes permiso para sincronizar los archivos de este participante.' }), { status: 403, headers: cors })
+      }
+    }
 
     const token = await getAccessToken()
     const tree = await ensureStructure(token, cache)
@@ -212,7 +230,12 @@ Deno.serve(async (req) => {
       await admin.from('payments').update({ receipt_drive_id: name }).eq('id', body.paymentId)
     }
     if (kind === 'selfie' && body.participantId) {
-      await admin.from('participants').update({ photo_drive_id: name }).eq('id', body.participantId)
+      const { error } = await admin.from('participants').update({ photo_drive_id: fileId }).eq('id', body.participantId)
+      if (error) throw new Error(`No se pudo guardar la referencia de la selfie: ${error.message}`)
+    }
+    if (kind === 'qr' && body.participantId) {
+      const { error } = await admin.from('participants').update({ qr_drive_id: fileId }).eq('id', body.participantId)
+      if (error) throw new Error(`No se pudo guardar la referencia del QR: ${error.message}`)
     }
 
     return new Response(JSON.stringify({ ok: true, fileId, name, folderId }), {
