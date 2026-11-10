@@ -2,8 +2,8 @@
   "name": "Comparsa San Miguel Arcángel 2004",
   "short_name": "Arcángel 2004",
   "description": "Plataforma institucional de la Asociación Cultural Comparsa San Miguel Arcángel 2004: inscripciones, pagos por Yape, credencial QR, asistencia y documentación.",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "/CSMAplataforma/",
+  "scope": "/CSMAplataforma/",
   "display": "standalone",
   "display_override": ["standalone", "minimal-ui"],
   "orientation": "portrait-primary",
@@ -13,41 +13,41 @@
   "dir": "ltr",
   "categories": ["education", "productivity", "lifestyle"],
   "icons": [
-    { "src": "/icons/icon-72.png", "sizes": "72x72", "type": "image/png" },
-    { "src": "/icons/icon-96.png", "sizes": "96x96", "type": "image/png" },
-    { "src": "/icons/icon-128.png", "sizes": "128x128", "type": "image/png" },
-    { "src": "/icons/icon-144.png", "sizes": "144x144", "type": "image/png" },
-    { "src": "/icons/icon-152.png", "sizes": "152x152", "type": "image/png" },
-    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/icon-256.png", "sizes": "256x256", "type": "image/png" },
-    { "src": "/icons/icon-384.png", "sizes": "384x384", "type": "image/png" },
-    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
-    { "src": "/icons/apple-touch-icon-180.png", "sizes": "180x180", "type": "image/png" }
+    { "src": "/CSMAplataforma/icons/icon-72.png", "sizes": "72x72", "type": "image/png" },
+    { "src": "/CSMAplataforma/icons/icon-96.png", "sizes": "96x96", "type": "image/png" },
+    { "src": "/CSMAplataforma/icons/icon-128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "/CSMAplataforma/icons/icon-144.png", "sizes": "144x144", "type": "image/png" },
+    { "src": "/CSMAplataforma/icons/icon-152.png", "sizes": "152x152", "type": "image/png" },
+    { "src": "/CSMAplataforma/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/CSMAplataforma/icons/icon-256.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "/CSMAplataforma/icons/icon-384.png", "sizes": "384x384", "type": "image/png" },
+    { "src": "/CSMAplataforma/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/CSMAplataforma/icons/maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/CSMAplataforma/icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "/CSMAplataforma/icons/apple-touch-icon-180.png", "sizes": "180x180", "type": "image/png" }
   ],
   "shortcuts": [
     {
       "name": "Mi código QR",
       "short_name": "Mi QR",
-      "url": "/app/qr",
+      "url": "/CSMAplataforma/app/qr",
       "description": "Abrir la credencial digital con el código QR"
     },
     {
       "name": "Enviar comprobante",
       "short_name": "Pagar",
-      "url": "/app/pagos/nuevo",
+      "url": "/CSMAplataforma/app/pagos/nuevo",
       "description": "Registrar un comprobante de Yape"
     },
     {
       "name": "Escáner de asistencia",
       "short_name": "Escáner",
-      "url": "/admin/escaner",
+      "url": "/CSMAplataforma/admin/escaner",
       "description": "Control de asistencia por QR"
     }
   ],
   "screenshots": [
-    { "src": "/icons/screenshot-wide.png", "sizes": "1280x720", "type": "image/png", "form_factor": "wide" },
-    { "src": "/icons/screenshot-mobile.png", "sizes": "720x1280", "type": "image/png", "form_factor": "narrow" }
+    { "src": "/CSMAplataforma/icons/screenshot-wide.png", "sizes": "1280x720", "type": "image/png", "form_factor": "wide" },
+    { "src": "/CSMAplataforma/icons/screenshot-mobile.png", "sizes": "720x1280", "type": "image/png", "form_factor": "narrow" }
   ]
 }

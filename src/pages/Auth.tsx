@@ -12,7 +12,7 @@ export function Welcome() {
   return (
     <div className="auth-wrap">
       <div className="auth-art">
-        <img className="auth-logo" src="/img/logo.png" alt="Comparsa San Miguel Arcángel 2004" />
+        <img className="auth-logo" src={`${import.meta.env.BASE_URL}img/logo.png`} alt="Comparsa San Miguel Arcángel 2004" />
         <div className="auth-pitch">
           <h1>Cultura y tradición,<br />administradas con orden.</h1>
           <p>
@@ -29,7 +29,7 @@ export function Welcome() {
       </div>
       <div className="auth-form-side">
         <div className="auth-card" style={{ textAlign: 'center' }}>
-          <div className="brand-mini"><img src="/img/logo.png" alt="Logo" /></div>
+          <div className="brand-mini"><img src={`${import.meta.env.BASE_URL}img/logo.png`} alt="Logo" /></div>
           <h1 style={{ marginBottom: 8 }}>Bienvenido</h1>
           <p className="muted" style={{ marginBottom: 22 }}>
             Ingresa a tu cuenta para revisar tus pagos, tu credencial QR y la documentación de la asociación.
@@ -81,7 +81,7 @@ export function Login() {
   return (
     <div className="auth-wrap">
       <div className="auth-art">
-        <img className="auth-logo" src="/img/logo.png" alt="Logo" />
+        <img className="auth-logo" src={`${import.meta.env.BASE_URL}img/logo.png`} alt="Logo" />
         <div className="auth-pitch">
           <h1>Panel institucional</h1>
           <p>Cada participante tiene una identidad digital única: código, QR, estado de cuenta y documentación habilitada.</p>
@@ -90,7 +90,7 @@ export function Login() {
       </div>
       <div className="auth-form-side">
         <div className="auth-card">
-          <div className="brand-mini"><img src="/img/logo.png" alt="Logo" /></div>
+          <div className="brand-mini"><img src={`${import.meta.env.BASE_URL}img/logo.png`} alt="Logo" /></div>
           <h1 style={{ marginBottom: 6 }}>Iniciar sesión</h1>
           <p className="muted tiny" style={{ marginBottom: 20 }}>Usa el correo registrado en tu inscripción.</p>
           <form onSubmit={submit} className="stack">
@@ -215,7 +215,7 @@ export function Register() {
       <div className="auth-form-side" style={{ alignItems: 'flex-start', paddingTop: 30 }}>
         <div className="auth-card" style={{ maxWidth: 620 }}>
           <div className="brand-mini" style={{ display: 'flex', justifyContent: 'center', marginBottom: 18 }}>
-            <img src="/img/logo.png" alt="Logo" style={{ width: 230 }} />
+            <img src={`${import.meta.env.BASE_URL}img/logo.png`} alt="Logo" style={{ width: 230 }} />
           </div>
           <h1 style={{ marginBottom: 4 }}>Inscripción de participante</h1>
           <p className="muted tiny" style={{ marginBottom: 18 }}>

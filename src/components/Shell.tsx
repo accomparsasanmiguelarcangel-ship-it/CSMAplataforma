@@ -89,7 +89,7 @@ export default function Shell() {
     <div className="shell">
       <aside className="sidebar no-print">
         <div className="sb-brand">
-          <img src="/img/logo.png" alt="Comparsa San Miguel Arcángel 2004" />
+          <img src={`${import.meta.env.BASE_URL}img/logo.png`} alt="Comparsa San Miguel Arcángel 2004" />
         </div>
         <div className="sb-scroll">
           <div className="sb-group">{role === 'participante' ? 'Mi cuenta' : role === 'controlador' ? 'Control de asistencia' : 'Panel administrativo'}</div>
