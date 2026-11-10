@@ -364,6 +364,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         email: input.email.trim().toLowerCase(),
         password: input.password,
         options: {
+          emailRedirectTo: `${window.location.origin}${import.meta.env.BASE_URL}login`,
           data: {
             registration_source: 'csma_public_registration',
             first_names: input.first_names.trim(),
