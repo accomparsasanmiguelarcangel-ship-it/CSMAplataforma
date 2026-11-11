@@ -30,20 +30,40 @@ Deno.serve(async (req) => {
     }
 
     if (event.email_data.email_action_type !== 'signup') {
-      // Preserve password recovery and other Auth messages. The same provider is
-      // used for all Auth emails while this hook is enabled.
       const apiKey = Deno.env.get('RESEND_API_KEY')
-      if (!apiKey) throw new Error('RESEND_API_KEY is required for non-signup Auth emails')
+      const from = Deno.env.get('AUTH_EMAIL_FROM')
+      if (!apiKey || !from) throw new Error('RESEND_API_KEY and AUTH_EMAIL_FROM are required for Auth emails')
+
       const action = event.email_data.email_action_type
-      const verifyUrl = `${supabaseUrl}/auth/v1/verify?token=${encodeURIComponent(event.email_data.token_hash)}&type=${encodeURIComponent(action)}&redirect_to=${encodeURIComponent(event.email_data.redirect_to)}`
+      const actionLinkTypes = new Set(['invite', 'magiclink', 'recovery', 'email_change', 'email', 'reauthentication'])
+      const needsLink = actionLinkTypes.has(action)
+      const verifyUrl = needsLink
+        ? `${supabaseUrl}/auth/v1/verify?token=${encodeURIComponent(event.email_data.token_hash || '')}&type=${encodeURIComponent(action)}&redirect_to=${encodeURIComponent(event.email_data.redirect_to || '')}`
+        : ''
+      const subjectByAction: Record<string, string> = {
+        recovery: 'Restablece tu contraseña',
+        invite: 'Invitación a la plataforma',
+        magiclink: 'Enlace para iniciar sesión',
+        email_change: 'Confirma el cambio de correo',
+        password_changed_notification: 'Tu contraseña fue cambiada',
+        email_changed_notification: 'Tu correo fue cambiado',
+        phone_changed_notification: 'Tu teléfono fue cambiado',
+        identity_linked_notification: 'Se vinculó un método de acceso',
+        identity_unlinked_notification: 'Se desvinculó un método de acceso',
+        mfa_factor_enrolled_notification: 'Se agregó un método de verificación',
+        mfa_factor_unenrolled_notification: 'Se quitó un método de verificación',
+      }
+      const html = needsLink
+        ? `<p>Hola,</p><p>Para continuar con la solicitud de tu cuenta, utiliza este enlace:</p><p><a href="${verifyUrl}">Continuar</a></p><p>Si no solicitaste este mensaje, puedes ignorarlo.</p>`
+        : `<p>Hola,</p><p>Te informamos que se registró esta actividad en tu cuenta: ${subjectByAction[action] || 'actividad de seguridad'}.</p><p>Si no reconoces esta actividad, comunícate con la directiva.</p>`
       const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          from: Deno.env.get('AUTH_EMAIL_FROM'),
+          from,
           to: [event.user.email],
-          subject: action === 'recovery' ? 'Restablece tu contraseña' : 'Acción de seguridad de tu cuenta',
-          html: `<p>Hola,</p><p>Para continuar con la solicitud de tu cuenta, utiliza este enlace:</p><p><a href="${verifyUrl}">Continuar</a></p><p>Si no solicitaste este mensaje, puedes ignorarlo.</p>`,
+          subject: subjectByAction[action] || 'Notificación de seguridad de tu cuenta',
+          html,
         }),
       })
       if (!response.ok) throw new Error(`Resend error: ${await response.text()}`)
