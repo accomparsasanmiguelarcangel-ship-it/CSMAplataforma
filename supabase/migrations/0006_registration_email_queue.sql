@@ -82,8 +82,8 @@ begin
 end;
 $$;
 
-revoke all on function public.enqueue_registration_confirmation(uuid,text,text,text,text,text) from public, anon, authenticated;
-grant execute on function public.enqueue_registration_confirmation(uuid,text,text,text) to service_role;
+revoke all on function public.enqueue_registration_confirmation(uuid,text,text,text,text,timestamptz) from public, anon, authenticated;
+grant execute on function public.enqueue_registration_confirmation(uuid,text,text,text,text,timestamptz) to service_role;
 
 -- Aprobación manual: solo administradores autenticados. No mueve los turnos de nadie.
 create or replace function public.admin_approve_registration(p_user_id uuid, p_notes text default null)
