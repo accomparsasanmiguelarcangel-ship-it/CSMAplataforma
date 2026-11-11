@@ -8,7 +8,6 @@ create table if not exists public.registration_email_queue (
   email citext not null,
   action_type text not null check (action_type = 'signup'),
   token_hash text not null,
-  otp_token text not null,
   redirect_to text not null,
   scheduled_at timestamptz not null,
   status text not null default 'pending'
@@ -37,7 +36,6 @@ create or replace function public.enqueue_registration_confirmation(
   p_user_id uuid,
   p_email text,
   p_token_hash text,
-  p_otp_token text,
   p_redirect_to text
 ) returns timestamptz
 language plpgsql
@@ -73,14 +71,14 @@ begin
 
   result_time := greatest(now(), slot_start);
   insert into public.registration_email_queue
-    (user_id, email, action_type, token_hash, otp_token, redirect_to, scheduled_at)
+    (user_id, email, action_type, token_hash, redirect_to, scheduled_at)
   values
-    (p_user_id, p_email, 'signup', p_token_hash, p_otp_token, p_redirect_to, result_time);
+    (p_user_id, p_email, 'signup', p_token_hash, p_redirect_to, result_time);
   return result_time;
 end;
 $$;
 
-revoke all on function public.enqueue_registration_confirmation(uuid,text,text,text,text) from public, anon, authenticated;
+revoke all on function public.enqueue_registration_confirmation(uuid,text,text,text) from public, anon, authenticated;
 grant execute on function public.enqueue_registration_confirmation(uuid,text,text,text,text) to service_role;
 
 -- Aprobación manual: solo administradores autenticados. No mueve los turnos de nadie.
