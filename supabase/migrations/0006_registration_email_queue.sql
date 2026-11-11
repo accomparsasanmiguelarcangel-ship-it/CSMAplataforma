@@ -120,7 +120,7 @@ begin
   where id = v_participant_id;
 
   update public.registration_email_queue
-  set status = 'cancelled', cancelled_at = now(), updated_at = now()
+  set status = 'cancelled', confirmation_token = '', cancelled_at = now(), updated_at = now()
   where user_id = p_user_id and status in ('pending','sending','failed','sent');
 
   insert into public.audit_log (actor_email, action, table_name, record_id, old_data, new_data)
