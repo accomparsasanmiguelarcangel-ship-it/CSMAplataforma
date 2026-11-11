@@ -24,7 +24,6 @@ Deno.serve(async (req) => {
     const event = new Webhook(secret).verify(raw, Object.fromEntries(req.headers)) as {
       user: { id: string; email: string }
       email_data: {
-        token: string
         token_hash: string
         redirect_to: string
         email_action_type: string
@@ -57,7 +56,6 @@ Deno.serve(async (req) => {
       p_user_id: event.user.id,
       p_email: event.user.email,
       p_token_hash: event.email_data.token_hash,
-      p_otp_token: event.email_data.token,
       p_redirect_to: event.email_data.redirect_to,
     })
     if (error) throw error
