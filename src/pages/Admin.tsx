@@ -1,6 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
+import { supabase } from '../lib/supabase'
 import {
   Avatar, Badge, Banner, Empty, Icon, Modal, Progress, SectionCard, Stat, Tabs,
 } from '../components/ui'
@@ -461,6 +462,34 @@ export function AdminEnrollments() {
   const [filter, setFilter] = useState<'pendiente' | 'observado' | 'rechazado' | 'todos'>('pendiente')
   const [photo, setPhoto] = useState<Participant | null>(null)
   const [obs, setObs] = useState<Record<string, string>>({})
+  const [queue, setQueue] = useState<Array<{ queue_no: number; user_id: string; email: string; scheduled_at: string; status: string; created_at: string }>>([])
+  const [approving, setApproving] = useState<string | null>(null)
+  useEffect(() => {
+    if (!supabase) return
+    let alive = true
+    supabase.rpc('admin_list_registration_email_queue').then(({ data, error }) => {
+      if (alive && !error && data) setQueue(data)
+    })
+    return () => { alive = false }
+  }, [])
+  const approve = async (p: Participant) => {
+    if (!p.profile_id || !supabase) {
+      setEnrollmentStatus(p.id, 'activo', obs[p.id] || 'Inscripción validada por la directiva.')
+      return
+    }
+    setApproving(p.id)
+    const { error } = await supabase.rpc('admin_approve_registration', {
+      p_user_id: p.profile_id,
+      p_notes: obs[p.id] || 'Inscripción validada por la directiva.',
+    })
+    setApproving(null)
+    if (error) {
+      window.alert('No se pudo aprobar la inscripción: ' + error.message)
+      return
+    }
+    setEnrollmentStatus(p.id, 'activo', obs[p.id] || 'Inscripción validada por la directiva.')
+    setQueue((items) => items.map((item) => item.user_id === p.profile_id ? { ...item, status: 'cancelled' } : item))
+  }
   const rows = db.participants.filter((p) => (filter === 'todos' ? true : p.status === filter))
 
   return (
@@ -475,6 +504,26 @@ export function AdminEnrollments() {
           <option value="todos">Todas</option>
         </select>
       </div>
+
+      {queue.length > 0 && (
+        <SectionCard title="Cola de confirmación de correos" sub="Orden original de inscripción. La aprobación manual cancela solo el correo de esa persona y no adelanta a las demás." pad0>
+          <div className="table-wrap">
+            <table className="table">
+              <thead><tr><th>Turno</th><th>Correo</th><th>Envío programado</th><th>Estado</th></tr></thead>
+              <tbody>
+                {queue.map((item) => (
+                  <tr key={item.queue_no}>
+                    <td className="mono tiny">#{item.queue_no}</td>
+                    <td className="tiny">{item.email}</td>
+                    <td className="tiny">{dateTime(item.scheduled_at)}</td>
+                    <td><Badge tone={item.status === 'sent' ? 'ok' : item.status === 'cancelled' ? 'muted' : 'warn'}>{item.status === 'sent' ? 'Enviado' : item.status === 'cancelled' ? 'Cancelado por aprobación' : item.status === 'sending' ? 'Enviando' : 'En espera'}</Badge></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </SectionCard>
+      )}
 
       {db.duplicates.length > 0 && (
         <SectionCard title="Registros duplicados detectados" sub="Intentos de inscripción con DNI ya registrado" pad0>
@@ -522,8 +571,8 @@ export function AdminEnrollments() {
               <input className="input" value={obs[p.id] || ''} onChange={(e) => setObs((s) => ({ ...s, [p.id]: e.target.value }))} placeholder="Motivo u observación" />
             </div>
             <div className="row wrap" style={{ marginTop: 10 }}>
-              <button className="btn btn-primary btn-sm" onClick={() => setEnrollmentStatus(p.id, 'activo', obs[p.id] || 'Inscripción validada por la directiva.')}>
-                <Icon name="check" size={14} /> Activar
+              <button className="btn btn-primary btn-sm" disabled={approving === p.id} onClick={() => approve(p)}>
+                <Icon name="check" size={14} /> {approving === p.id ? 'Aprobando…' : 'Aprobar y activar'}
               </button>
               <button className="btn btn-sm" onClick={() => setEnrollmentStatus(p.id, 'observado', obs[p.id] || 'Ficha observada: regularizar datos.')}>
                 Observar
