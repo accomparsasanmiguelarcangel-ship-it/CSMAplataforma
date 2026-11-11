@@ -23,7 +23,4 @@ jobs:
       - name: Install dependencies
         run: npm ci
       - name: Typecheck and build
-        env:
-          VITE_SUPABASE_URL: https://wtwvytwsnffdhijmnosv.supabase.co
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
