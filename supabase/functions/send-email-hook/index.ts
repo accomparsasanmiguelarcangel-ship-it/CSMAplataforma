@@ -69,7 +69,7 @@ Deno.serve(async (req) => {
       const linkHtml = (url: string) =>
         `<p>Hola,</p><p>Para continuar con la solicitud de tu cuenta, utiliza este enlace:</p><p><a href="${url}">Continuar</a></p><p>Si no solicitaste este mensaje, puedes ignorarlo.</p>`
 
-      if (action === 'email_change' && event.email_data.token_hash_new && event.email_data.token_new && event.user.new_email) {
+      if (action === 'email_change' && event.email_data.token_hash_new && event.email_data.token_new && event.email_data.token_hash && event.user.new_email) {
         await send(event.user.email, linkHtml(verifyUrl(supabaseUrl, event.email_data.token_hash_new, action, event.email_data.redirect_to)))
         await send(event.user.new_email, linkHtml(verifyUrl(supabaseUrl, event.email_data.token_hash, action, event.email_data.redirect_to)))
       } else if (['invite', 'magiclink', 'recovery', 'email_change', 'email', 'reauthentication'].includes(action)) {
