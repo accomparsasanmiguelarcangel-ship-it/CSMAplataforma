@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
   const job = rows?.[0]
   if (!job) return Response.json({ ok: true, processed: false })
 
-  const verifyUrl = `${url}/auth/v1/verify?token=${encodeURIComponent(job.token_hash)}&type=signup&redirect_to=${encodeURIComponent(job.redirect_to)}`
+  const verifyUrl = `${url}/functions/v1/confirm-registration?token=${encodeURIComponent(job.confirmation_token)}`
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     if (!response.ok) throw new Error(`Resend error: ${await response.text()}`)
     await supabase.from('registration_email_queue').update({
       status: 'sent', sent_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString(),
-    }).eq('id', job.id)
+    }).eq('id', job.id).eq('status', 'sending')
     return Response.json({ ok: true, processed: true, queue_no: job.queue_no })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
