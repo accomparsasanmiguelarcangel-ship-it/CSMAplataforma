@@ -1,0 +1,5 @@
+[functions.send-email-hook]
+verify_jwt = false
+
+[functions.process-registration-email-queue]
+verify_jwt = false
