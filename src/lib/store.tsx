@@ -98,7 +98,7 @@ interface StoreCtx {
   login: (email: string, password: string) => Promise<{ ok: boolean; error?: string }>
   loginAs: (profileId: string) => void
   logout: () => Promise<void>
-  register: (input: RegistrationInput) => Promise<{ ok: boolean; error?: string; code?: string; participantId?: string }>
+  register: (input: RegistrationInput) => Promise<{ ok: boolean; error?: string; code?: string; participantId?: string; scheduledAt?: string; queueNo?: number }>
   submitPayment: (participantId: string, input: PaymentInput) => Promise<{ ok: boolean; error?: string; seq?: number; reference?: string }>
   reviewPayment: (paymentId: string, action: 'validado' | 'rechazado' | 'observado' | 'reenvio_solicitado', notes: string, amount?: number) => void
   setEnrollmentStatus: (participantId: string, status: Participant['status'], notes?: string) => void
@@ -398,9 +398,19 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // La cuenta ya quedó creada por el trigger; no reportamos un fallo de inscripción.
         console.warn('No se pudo guardar temporalmente la selfie en este navegador.')
       }
-      // El trigger SQL crea profile y participant con el UUID real, aunque la
-      // confirmación del correo todavía esté pendiente.
-      return { ok: true, code: 'CONFIRM_EMAIL', participantId: data.user.id }
+      // El Auth Hook ya reservó el turno antes de completar signUp.
+      const { data: queueRows } = await supabase.rpc('get_registration_queue_status', {
+        p_user_id: data.user.id,
+        p_email: input.email.trim().toLowerCase(),
+      })
+      const queueStatus = Array.isArray(queueRows) ? queueRows[0] : null
+      return {
+        ok: true,
+        code: 'CONFIRM_EMAIL',
+        participantId: data.user.id,
+        scheduledAt: queueStatus?.scheduled_at,
+        queueNo: queueStatus?.queue_no,
+      }
     }
 
     const counter = cur.counter + 1
