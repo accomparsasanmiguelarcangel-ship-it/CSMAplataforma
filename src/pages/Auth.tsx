@@ -161,6 +161,7 @@ export function Register() {
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState<string | null>(null)
+  const [scheduledAt, setScheduledAt] = useState<string | null>(null)
   const [form, setForm] = useState({
     first_names: '', last_names: '', dni: '', phone: '', address: '', group_name: GROUPS[0],
     email: '', password: '', confirm: '', extra: {} as Record<string, string>,
@@ -180,6 +181,7 @@ export function Register() {
     const res = await register({ ...form, photoDataUrl: photo, extra: form.extra })
     setBusy(false)
     if (!res.ok) { setErr(res.error || 'No se pudo completar la inscripción.'); return }
+    setScheduledAt(res.scheduledAt || null)
     setDone(res.code || 'CONFIRM_EMAIL')
   }
 
@@ -194,12 +196,14 @@ export function Register() {
               </div>
               {done === 'CONFIRM_EMAIL' ? (
                 <>
-                  <h1>Confirma tu correo electrónico</h1>
+                  <h1>Tu inscripción está en cola de confirmación</h1>
                   <div className="banner info" style={{ textAlign: 'left' }}>
                     <Icon name="info" size={16} />
                     <div>
                       <strong>Tu inscripción fue creada</strong>
-                      Enviamos un enlace de confirmación a tu correo. Abre ese mensaje y confirma tu dirección.
+                      Tu solicitud quedó registrada y el correo de confirmación se enviará según el turno asignado.
+                      {scheduledAt && <><br /><strong>Tu turno de envío es: {new Date(scheduledAt).toLocaleString('es-PE', { dateStyle: 'short', timeStyle: 'short' })}.</strong></>}
+                      Revisa tu bandeja de entrada después de esa hora y confirma tu dirección cuando recibas el mensaje.
                       Después vuelve a esta página e inicia sesión. Tu ficha ya quedó registrada con estado
                       <b> pendiente de revisión</b>. Para completar la selfie, inicia sesión desde este mismo navegador.
                     </div>
