@@ -194,12 +194,12 @@ export function Register() {
               </div>
               {done === 'CONFIRM_EMAIL' ? (
                 <>
-                  <h1>Confirma tu correo electrónico</h1>
+                  <h1>Tu inscripción está en cola de confirmación</h1>
                   <div className="banner info" style={{ textAlign: 'left' }}>
                     <Icon name="info" size={16} />
                     <div>
                       <strong>Tu inscripción fue creada</strong>
-                      Enviamos un enlace de confirmación a tu correo. Abre ese mensaje y confirma tu dirección.
+                      Tu solicitud quedó registrada y el correo de confirmación se enviará según el turno asignado. Revisa tu bandeja de entrada más tarde y confirma tu dirección cuando recibas el mensaje.
                       Después vuelve a esta página e inicia sesión. Tu ficha ya quedó registrada con estado
                       <b> pendiente de revisión</b>. Para completar la selfie, inicia sesión desde este mismo navegador.
                     </div>
