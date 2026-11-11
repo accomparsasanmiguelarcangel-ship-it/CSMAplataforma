@@ -24,7 +24,6 @@ Deno.serve(async (req) => {
     const event = new Webhook(secret).verify(raw, Object.fromEntries(req.headers)) as {
       user: { id: string; email: string }
       email_data: {
-        token_hash: string
         redirect_to: string
         email_action_type: string
       }
@@ -51,12 +50,18 @@ Deno.serve(async (req) => {
       return new Response('{}', { status: 200, headers: { ...cors, 'Content-Type': 'application/json' } })
     }
 
+    const random = crypto.getRandomValues(new Uint8Array(32))
+    const confirmationToken = Array.from(random, (byte) => byte.toString(16).padStart(2, '0')).join('')
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(confirmationToken))
+    const confirmationTokenHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
     const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } })
     const { error } = await supabase.rpc('enqueue_registration_confirmation', {
       p_user_id: event.user.id,
       p_email: event.user.email,
-      p_token_hash: event.email_data.token_hash,
+      p_confirmation_token: confirmationToken,
+      p_confirmation_token_hash: confirmationTokenHash,
       p_redirect_to: event.email_data.redirect_to,
+      p_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     })
     if (error) throw error
 
