@@ -516,7 +516,7 @@ export function AdminEnrollments() {
                     <td className="mono tiny">#{item.queue_no}</td>
                     <td className="tiny">{item.email}</td>
                     <td className="tiny">{dateTime(item.scheduled_at)}</td>
-                    <td><Badge tone={item.status === 'sent' ? 'ok' : item.status === 'cancelled' ? 'muted' : 'warn'}>{item.status === 'sent' ? 'Enviado' : item.status === 'cancelled' ? 'Cancelado por aprobación' : item.status === 'sending' ? 'Enviando' : 'En espera'}</Badge></td>
+                    <td><Badge tone={item.status === 'sent' ? 'ok' : item.status === 'cancelled' ? 'neutral' : 'warn'}>{item.status === 'sent' ? 'Enviado' : item.status === 'cancelled' ? 'Cancelado por aprobación' : item.status === 'sending' ? 'Enviando' : 'En espera'}</Badge></td>
                   </tr>
                 ))}
               </tbody>
