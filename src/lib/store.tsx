@@ -711,8 +711,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     let status: AttendanceStatus = a.status || 'presente'
     if (!a.status && entryType === 'entrada') {
-      const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
-      const [hh, mm] = (session.late_after || '23:59').split(':').map(Number)
+      const limaParts = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+      }).formatToParts(new Date())
+      const part = (type: string) => Number(limaParts.find((x) => x.type === type)?.value || 0)
+      const nowMin = part('hour') * 60 + part('minute')
+      const event = cur.events.find((e) => e.id === session.event_id)
+      const [deadlineHour, deadlineMinute] = (event?.entry_until || '23:59').slice(0, 5).split(':').map(Number)
+      if (nowMin > deadlineHour * 60 + deadlineMinute) {
+        return { ok: false, error: `El límite de ingreso para este evento fue a las ${event?.entry_until || '23:59'}.` }
+      }
+      const [hh, mm] = (event?.late_after || session.late_after || '23:59').slice(0, 5).split(':').map(Number)
       if (nowMin > hh * 60 + mm) status = 'tardanza'
     }
     const record: Attendance = {
