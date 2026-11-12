@@ -719,7 +719,6 @@ export function PDocuments() {
       a.href = url
       a.target = '_blank'
       a.rel = 'noopener'
-      a.download = title
       a.click()
       window.setTimeout(() => URL.revokeObjectURL(url), 30000)
     } catch (error) {
