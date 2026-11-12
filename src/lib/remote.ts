@@ -102,11 +102,13 @@ export const cloud = {
   },
   async upsertPayment(p: Payment) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('payments').upsert({
+    const { error } = await supabase.from('payments').upsert({
       id: p.id, participant_id: p.participant_id, seq: p.seq, amount: p.amount,
       operation_number: p.operation_number, method: p.method, concept: p.concept, paid_at: p.paid_at,
-      receipt_drive_id: p.receipt_drive_id, status: p.status, notes: p.notes, reject_reason: p.reject_reason,
-    }))
+      receipt_drive_id: p.receipt_drive_id, receipt_storage_path: p.receipt_storage_path || null,
+      status: p.status, notes: p.notes, reject_reason: p.reject_reason,
+    })
+    if (error) throw error
   },
   async review(paymentId: string, action: string, newStatus: string, notes: string) {
     if (!can() || !supabase) return
