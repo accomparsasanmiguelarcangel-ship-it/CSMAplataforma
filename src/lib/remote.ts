@@ -96,9 +96,23 @@ export const cloud = {
     if (!can() || !supabase) return
     await safe(() => supabase!.from('participants').upsert({
       id: p.id, code: p.code, dni: p.dni, first_names: p.first_names, last_names: p.last_names,
-      phone: p.phone, address: p.address, group_name: p.group_name, photo_drive_id: p.photo_drive_id,
+      phone: p.phone, address: p.address, group_name: p.group_name, participation_type: p.participation_type || null, birth_date: p.birth_date || null,
+      fee_amount: p.fee_amount ?? null, fee_adjustment_reason: p.fee_adjustment_reason || null,
+      fee_adjusted_by: p.fee_adjusted_by || null, fee_adjusted_at: p.fee_adjusted_at || null, photo_drive_id: p.photo_drive_id,
       status: p.status, qr_token: p.qr_token, notes: p.notes, extra: p.extra, profile_id: p.profile_id,
     }))
+  },
+  async updateParticipant(id: string, patch: Partial<Participant>) {
+    if (!can() || !supabase) return
+    const allowed = {
+      participation_type: patch.participation_type, birth_date: patch.birth_date,
+      fee_amount: patch.fee_amount, fee_adjustment_reason: patch.fee_adjustment_reason,
+      fee_adjusted_by: patch.fee_adjusted_by, fee_adjusted_at: patch.fee_adjusted_at,
+    }
+    const payload = Object.fromEntries(Object.entries(allowed).filter(([, value]) => value !== undefined))
+    const { data, error } = await supabase.from('participants').update(payload).eq('id', id).select('id').maybeSingle()
+    if (error) throw error
+    if (!data) throw new Error('No se guardaron los cambios. Verifica tus permisos de administrador.')
   },
   async upsertPayment(p: Payment) {
     if (!can() || !supabase) return
@@ -166,7 +180,10 @@ export const cloud = {
   },
   async settings(s: Settings) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('settings').upsert({ id: 'global', ...s }))
+    const { data, error } = await supabase.from('settings').upsert({ id: 'global', ...s }).select('*').single()
+    if (error) throw error
+    if (!data) throw new Error('Supabase no confirmó el guardado de la configuración.')
+    return data as Settings
   },
   async upsertField(f: FormField) {
     if (!can() || !supabase) return
