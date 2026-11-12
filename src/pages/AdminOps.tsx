@@ -240,7 +240,7 @@ export function AdminScanner() {
 /* ══════════════════════ EVENTOS Y JORNADAS ═══════════════════════════════ */
 const emptyEvent = (): EventItem => ({
   id: '', name: '', description: '', place: '', starts_at: new Date().toISOString().slice(0, 16),
-  ends_at: new Date().toISOString().slice(0, 16), categories: [], requires_payment: false,
+  ends_at: new Date().toISOString().slice(0, 16), late_after: '09:15', entry_until: '11:00', categories: [], requires_payment: false,
   min_paid_amount: 0, active: true,
 })
 
@@ -294,11 +294,11 @@ export function AdminEvents() {
                   </div>
                   <p className="tiny muted" style={{ marginTop: 3 }}>{e.description}</p>
                   <div className="tiny muted" style={{ marginTop: 4 }}>
-                    {shortDate(e.starts_at)} · {timeOnly(e.starts_at)}–{timeOnly(e.ends_at)} · {e.place} · {attended} asistencia(s)
+                    {shortDate(e.starts_at)} · Inicio {timeOnly(e.starts_at)} · Tardanza desde {e.late_after || '—'} · Ingreso hasta {e.entry_until || '—'} · Final {timeOnly(e.ends_at)} · {e.place} · {attended} asistencia(s)
                   </div>
                 </div>
                 <div className="row" style={{ gap: 6 }}>
-                  <button className="btn btn-sm" onClick={() => setSess({ id: '', event_id: e.id, name: 'Jornada 1', session_date: todayISO(), start_time: '09:00', end_time: '12:00', late_after: '09:15' })}>
+                  <button className="btn btn-sm" onClick={() => setSess({ id: '', event_id: e.id, name: 'Jornada 1', session_date: todayISO(), start_time: timeOnly(e.starts_at), end_time: timeOnly(e.ends_at), late_after: e.late_after || '09:15' })}>
                     <Icon name="plus" size={13} /> Jornada
                   </button>
                   <button className="icon-btn" onClick={() => openEdit(e)}><Icon name="edit" size={15} /></button>
@@ -350,7 +350,9 @@ export function AdminEvents() {
               <input className="input" value={edit.categories.join(', ')} onChange={(e) => setEdit({ ...edit, categories: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
             </Field>
             <Field label="Inicio" required><input className="input" type="datetime-local" value={edit.starts_at.slice(0, 16)} onChange={(e) => setEdit({ ...edit, starts_at: e.target.value })} /></Field>
-            <Field label="Fin" required><input className="input" type="datetime-local" value={edit.ends_at.slice(0, 16)} onChange={(e) => setEdit({ ...edit, ends_at: e.target.value })} /></Field>
+            <Field label="Tardanza desde" required><input className="input" type="time" value={edit.late_after || '09:15'} onChange={(e) => setEdit({ ...edit, late_after: e.target.value })} /></Field>
+            <Field label="Límite para ingresar" required><input className="input" type="time" value={edit.entry_until || '11:00'} onChange={(e) => setEdit({ ...edit, entry_until: e.target.value })} /></Field>
+            <Field label="Final del evento" required><input className="input" type="datetime-local" value={edit.ends_at.slice(0, 16)} onChange={(e) => setEdit({ ...edit, ends_at: e.target.value })} /></Field>
             <Field label="Requisito financiero de ingreso">
               <select className="select" value={edit.requires_payment ? 'si' : 'no'} onChange={(e) => setEdit({ ...edit, requires_payment: e.target.value === 'si' })}>
                 <option value="no">Sin requisito de pago</option>
