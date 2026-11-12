@@ -138,10 +138,11 @@ export const cloud = {
   },
   async attendance(a: Attendance) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('attendance').insert({
+    const { error } = await supabase.from('attendance').upsert({
       id: a.id, participant_id: a.participant_id, session_id: a.session_id, event_id: a.event_id,
       entry_type: a.entry_type, status: a.status, method: a.method, notes: a.notes, recorded_at: a.recorded_at,
-    }))
+    }, { onConflict: 'id' })
+    if (error) throw error
   },
   async upsertEvent(e: EventItem) {
     if (!can() || !supabase) return

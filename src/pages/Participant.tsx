@@ -7,7 +7,8 @@ import {
   shortDate, statusTone, timeOnly, fullName,
 } from '../lib/utils'
 import { qrDataUrl } from '../lib/qr'
-import type { AttendanceStatus, Payment } from '../lib/types'
+import type { AttendanceStatus, DocumentItem, Payment } from '../lib/types'
+import { edgeCall, supabase } from '../lib/supabase'
 
 /* ── Hook: QR como data URL ─────────────────────────────────────────────── */
 export function useQr(token: string | undefined, size = 320) {
@@ -689,20 +690,83 @@ export function PAttendance() {
 
 /* ── DOCUMENTACIÓN ──────────────────────────────────────────────────────── */
 export function PDocuments() {
-  const { user, documentsFor } = useStore()
+  const { user, documentsFor, ready } = useStore()
   const p = user?.participant
-  const { docs, locked } = documentsFor(p?.id || null)
+  const { docs: registeredDocs, locked } = documentsFor(p?.id || null)
+  const [driveDocs, setDriveDocs] = useState<DocumentItem[]>([])
+  const [driveLoading, setDriveLoading] = useState(false)
+  const [driveError, setDriveError] = useState('')
+  const [openingDocument, setOpeningDocument] = useState<string | null>(null)
+  useEffect(() => {
+    if (!p || !ready) return
+    let active = true
+    setDriveLoading(true)
+    setDriveError('')
+    edgeCall<{ ok: boolean; documents: DocumentItem[] }>('drive-sync', { kind: 'list_documents' })
+      .then((result) => { if (active) setDriveDocs(result.documents || []) })
+      .catch((error) => { if (active) setDriveError(error instanceof Error ? error.message : 'No se pudo consultar Google Drive.') })
+      .finally(() => { if (active) setDriveLoading(false) })
+    return () => { active = false }
+  }, [p?.id, ready])
+  const docs = useMemo(() => {
+    const available = registeredDocs.filter((doc) => !!doc.file_url || !!doc.drive_file_id)
+    const known = new Set(available.map((doc) => doc.drive_file_id).filter(Boolean))
+    return [...available, ...driveDocs.filter((doc) => !known.has(doc.drive_file_id))]
+  }, [registeredDocs, driveDocs])
+  const openDocument = async (doc: DocumentItem) => {
+    if (doc.file_url) {
+      window.open(doc.file_url, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (!doc.drive_file_id || !supabase) return
+    const tab = window.open('', '_blank')
+    if (!tab) {
+      setDriveError('Permite las ventanas emergentes para abrir los documentos.')
+      return
+    }
+    tab.document.title = 'Abriendo documento…'
+    setOpeningDocument(doc.id)
+    setDriveError('')
+    try {
+      const { data: authData } = await supabase.auth.getSession()
+      const accessToken = authData.session?.access_token
+      if (!accessToken) throw new Error('Tu sesión ha caducado. Vuelve a ingresar a la plataforma.')
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/drive-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ kind: 'download_document', fileId: doc.drive_file_id }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'No se pudo abrir el documento.')
+      }
+      const url = URL.createObjectURL(await response.blob())
+      tab.location.href = url
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (error) {
+      tab.close()
+      setDriveError(error instanceof Error ? error.message : 'No se pudo abrir el documento.')
+    } finally {
+      setOpeningDocument(null)
+    }
+  }
   const cats = Array.from(new Set(docs.map((d) => d.category)))
   return (
     <div className="page">
       <div className="page-head"><div><h1>Documentación institucional</h1><p className="lead">Biblioteca privada de la asociación.</p></div></div>
+      {driveLoading && <Banner tone="info" title="Cargando biblioteca">Consultando las carpetas institucionales de Google Drive…</Banner>}
+      {driveError && <Banner tone="bad" title="No se pudo cargar Google Drive">{driveError}</Banner>}
       {locked && (
         <Banner tone="warn" title="Acceso parcial">
           Para acceder a toda la documentación debes estar inscrito y tener al menos un pago confirmado por la administración.
         </Banner>
       )}
       <div style={{ height: 14 }} />
-      {cats.length === 0 && <div className="card"><Empty icon="book" title="Sin documentos publicados" /></div>}
+      {cats.length === 0 && !driveLoading && <div className="card"><Empty icon="book" title="Sin documentos disponibles" text={driveError ? 'No se pudo consultar la biblioteca. Intenta recargar la página.' : 'Aún no hay archivos en las carpetas institucionales habilitadas.'} /></div>}
       {cats.map((c) => (
         <div key={c} style={{ marginBottom: 14 }}>
           <SectionCard title={c} pad0>
@@ -716,9 +780,9 @@ export function PDocuments() {
                     <strong style={{ fontSize: '0.85rem' }}>{d.title}</strong>
                     <div className="tiny muted">{d.description} · {d.size_label} · {shortDate(d.published_at)}</div>
                   </div>
-                  <button className="btn btn-sm" disabled={!d.file_url && !d.drive_file_id}
-                    onClick={() => d.file_url && window.open(d.file_url, '_blank')}>
-                    <Icon name="download" size={13} /> Abrir
+                  <button className="btn btn-sm" disabled={(!d.file_url && !d.drive_file_id) || openingDocument === d.id}
+                    onClick={() => void openDocument(d)}>
+                    <Icon name="download" size={13} /> {openingDocument === d.id ? 'Abriendo…' : 'Abrir'}
                   </button>
                 </div>
               ))}
