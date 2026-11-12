@@ -789,7 +789,6 @@ export function AdminAnnouncements() {
     </div>
   )
 }
-}
 
 /* ══════════════════════ REPORTES ═════════════════════════════════════════ */
 export function AdminReports() {
