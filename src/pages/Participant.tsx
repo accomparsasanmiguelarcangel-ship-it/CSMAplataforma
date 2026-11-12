@@ -8,7 +8,7 @@ import {
 } from '../lib/utils'
 import { qrDataUrl } from '../lib/qr'
 import type { AttendanceStatus, DocumentItem, Payment } from '../lib/types'
-import { edgeCall } from '../lib/supabase'
+import { edgeCall, supabase } from '../lib/supabase'
 
 /* ── Hook: QR como data URL ─────────────────────────────────────────────── */
 export function useQr(token: string | undefined, size = 320) {
@@ -696,6 +696,7 @@ export function PDocuments() {
   const [driveDocs, setDriveDocs] = useState<DocumentItem[]>([])
   const [driveLoading, setDriveLoading] = useState(false)
   const [driveError, setDriveError] = useState('')
+  const [openingDocument, setOpeningDocument] = useState<string | null>(null)
   useEffect(() => {
     if (!p || !ready) return
     let active = true
@@ -712,6 +713,47 @@ export function PDocuments() {
     const known = new Set(available.map((doc) => doc.drive_file_id).filter(Boolean))
     return [...available, ...driveDocs.filter((doc) => !known.has(doc.drive_file_id))]
   }, [registeredDocs, driveDocs])
+  const openDocument = async (doc: DocumentItem) => {
+    if (doc.file_url && !doc.drive_file_id) {
+      window.open(doc.file_url, '_blank', 'noopener,noreferrer')
+      return
+    }
+    if (!doc.drive_file_id || !supabase) return
+    const tab = window.open('', '_blank')
+    if (!tab) {
+      setDriveError('Permite las ventanas emergentes para abrir los documentos.')
+      return
+    }
+    tab.document.title = 'Abriendo documento…'
+    setOpeningDocument(doc.id)
+    setDriveError('')
+    try {
+      const { data: authData } = await supabase.auth.getSession()
+      const accessToken = authData.session?.access_token
+      if (!accessToken) throw new Error('Tu sesión ha caducado. Vuelve a ingresar a la plataforma.')
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/drive-sync`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+        },
+        body: JSON.stringify({ kind: 'download_document', fileId: doc.drive_file_id }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}))
+        throw new Error(payload.error || 'No se pudo abrir el documento.')
+      }
+      const url = URL.createObjectURL(await response.blob())
+      tab.location.href = url
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (error) {
+      tab.close()
+      setDriveError(error instanceof Error ? error.message : 'No se pudo abrir el documento.')
+    } finally {
+      setOpeningDocument(null)
+    }
+  }
   const cats = Array.from(new Set(docs.map((d) => d.category)))
   return (
     <div className="page">
@@ -738,12 +780,9 @@ export function PDocuments() {
                     <strong style={{ fontSize: '0.85rem' }}>{d.title}</strong>
                     <div className="tiny muted">{d.description} · {d.size_label} · {shortDate(d.published_at)}</div>
                   </div>
-                  <button className="btn btn-sm" disabled={!d.file_url && !d.drive_file_id}
-                    onClick={() => {
-                      const url = d.file_url || (d.drive_file_id ? `https://drive.google.com/file/d/${d.drive_file_id}/view` : '')
-                      if (url) window.open(url, '_blank', 'noopener,noreferrer')
-                    }}>
-                    <Icon name="download" size={13} /> Abrir
+                  <button className="btn btn-sm" disabled={(!d.file_url && !d.drive_file_id) || openingDocument === d.id}
+                    onClick={() => void openDocument(d)}>
+                    <Icon name="download" size={13} /> {openingDocument === d.id ? 'Abriendo…' : 'Abrir'}
                   </button>
                 </div>
               ))}
