@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { supabase } from '../lib/supabase'
 import {
-  Avatar, Badge, Banner, Empty, Icon, Modal, Progress, SectionCard, Stat, Tabs, useToast,
+  Avatar, Badge, Banner, Empty, Field, Icon, Modal, Progress, SectionCard, Stat, Tabs, useToast,
 } from '../components/ui'
 import {
   accountStatusLabel, attendanceStatusLabel, dateTime, enrollmentStatusLabel, fullName, money,
