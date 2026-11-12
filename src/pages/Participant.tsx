@@ -714,7 +714,7 @@ export function PDocuments() {
     return [...available, ...driveDocs.filter((doc) => !known.has(doc.drive_file_id))]
   }, [registeredDocs, driveDocs])
   const openDocument = async (doc: DocumentItem) => {
-    if (doc.file_url && !doc.drive_file_id) {
+    if (doc.file_url) {
       window.open(doc.file_url, '_blank', 'noopener,noreferrer')
       return
     }
