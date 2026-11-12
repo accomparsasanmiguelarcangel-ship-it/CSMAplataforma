@@ -477,7 +477,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const op = input.operation_number.trim()
     if (op.length < 4) return { ok: false, error: 'Ingresa el número de operación del comprobante.' }
 
-    const dup = cur.payments.find((p) => p.operation_number.replace(/\s/g, '') === op.replace(/\s/g, ''))
+    const dup = cur.payments.find((p) => p.operation_number.replace(/\\s/g, '') === op.replace(/\\s/g, ''))
     if (dup) {
       return { ok: false, error: `El número de operación ${op} ya fue registrado (${dup.status === 'validado' ? 'pago aprobado' : 'en revisión'}). No se permiten operaciones duplicadas.` }
     }
@@ -486,18 +486,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const participant = cur.participants.find((p) => p.id === participantId)
     if (!participant) return { ok: false, error: 'Participante no encontrado.' }
     const reference = `${participant.code}_PAGO_${String(seq).padStart(2, '0')}.jpg`
+    const path = `participantes/${participant.code}/${reference}`
 
     if (supabase) {
       try {
         const blob = await (await fetch(input.receiptDataUrl)).blob()
-        const path = `participantes/${participant.code}/${reference}`
-        const up = await supabase.storage.from('private-files').upload(path, blob, { upsert: false, contentType: 'image/jpeg' })
-        if (!up.error) await supabase.functions.invoke('drive-sync', { body: { code: participant.code, kind: 'receipt', storagePath: path, seq } })
-      } catch { /* queda registrado para reintento */ }
+        const up = await supabase.storage.from('private-files').upload(path, blob, {
+          upsert: true, contentType: blob.type || 'image/jpeg',
+        })
+        if (up.error) return { ok: false, error: 'No se pudo guardar el comprobante: ' + up.error.message }
+      } catch (e) {
+        return { ok: false, error: 'No se pudo subir el comprobante: ' + (e instanceof Error ? e.message : String(e)) }
+      }
     }
 
     const payment: Payment = {
-      id: uid('pay'),
+      id: crypto.randomUUID(),
       participant_id: participantId,
       seq,
       amount: Number(input.amount),
@@ -507,11 +511,18 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       paid_at: input.paid_at ? new Date(input.paid_at).toISOString() : nowISO(),
       receipt_url: input.receiptDataUrl,
       receipt_drive_id: reference,
+      receipt_storage_path: supabase ? path : null,
       status: 'pendiente',
       notes: input.notes || null,
       reject_reason: null,
       created_at: nowISO(),
       reviewed_at: null,
+    }
+
+    try {
+      await cloud.upsertPayment(payment)
+    } catch (e) {
+      return { ok: false, error: 'La imagen quedó guardada, pero no se pudo registrar el pago en la base de datos: ' + (e instanceof Error ? e.message : String(e)) }
     }
 
     setDb((prev) => {
@@ -533,10 +544,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ]
       return next
     })
-    cloud.upsertPayment(payment)
+    if (supabase) {
+      const { error: driveError } = await supabase.functions.invoke('drive-sync', {
+        body: { code: participant.code, kind: 'receipt', storagePath: path, seq, fileName: reference },
+      })
+      if (driveError) console.warn('Comprobante guardado en Supabase Storage; sincronización Drive pendiente:', driveError.message)
+    }
     return { ok: true, seq, reference }
   }, [])
-
   const reviewPayment = useCallback((paymentId: string, action: 'validado' | 'rechazado' | 'observado' | 'reenvio_solicitado', notes: string, amount?: number) => {
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
