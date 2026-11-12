@@ -477,7 +477,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const op = input.operation_number.trim()
     if (op.length < 4) return { ok: false, error: 'Ingresa el número de operación del comprobante.' }
 
-    const dup = cur.payments.find((p) => p.operation_number.replace(/\\s/g, '') === op.replace(/\\s/g, ''))
+    const dup = cur.payments.find((p) => p.operation_number.replace(/\s/g, '') === op.replace(/\s/g, ''))
     if (dup) {
       return { ok: false, error: `El número de operación ${op} ya fue registrado (${dup.status === 'validado' ? 'pago aprobado' : 'en revisión'}). No se permiten operaciones duplicadas.` }
     }
