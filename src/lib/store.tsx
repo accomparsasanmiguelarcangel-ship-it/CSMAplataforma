@@ -111,7 +111,7 @@ interface StoreCtx {
   saveAbsence: (sessionId: string, participantId: string, status: AttendanceStatus, notes: string) => { ok: boolean; error?: string }
   saveEvent: (e: EventItem) => void
   deleteEvent: (id: string) => void
-  saveSession: (s: SessionItem) => void
+  saveSession: (s: SessionItem) => Promise<{ ok: boolean; error?: string }>
   deleteSession: (id: string) => void
   saveDocument: (d: DocumentItem) => void
   deleteDocument: (id: string) => void
@@ -794,7 +794,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     cloud.remove('events', id)
   }, [sessionProfileId])
 
-  const saveSession = useCallback((s: SessionItem) => {
+  const saveSession = useCallback(async (s: SessionItem) => {
+    try {
+      await cloud.upsertSession(s)
+    } catch (e) {
+      return { ok: false, error: 'No se pudo guardar la jornada: ' + (e instanceof Error ? e.message : String(e)) }
+    }
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
       const i = next.sessions.findIndex((x) => x.id === s.id)
@@ -803,7 +808,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       next.audit = [audit(prev, 'session.save', 'event_sessions', s.id, null, s as unknown as Record<string, unknown>), ...next.audit]
       return next
     })
-    cloud.upsertSession(s)
+    return { ok: true }
   }, [sessionProfileId])
 
   const deleteSession = useCallback((id: string) => {
