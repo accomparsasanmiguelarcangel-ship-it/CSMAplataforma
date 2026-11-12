@@ -105,8 +105,8 @@ export interface EventItem {
   place: string
   starts_at: string
   ends_at: string
-  late_after: string
-  entry_until: string
+  late_after?: string
+  entry_until?: string
   categories: string[]
   requires_payment: boolean
   min_paid_amount: number
