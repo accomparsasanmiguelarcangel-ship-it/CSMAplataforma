@@ -116,7 +116,7 @@ interface StoreCtx {
   deleteSession: (id: string) => void
   saveDocument: (d: DocumentItem) => void
   deleteDocument: (id: string) => void
-  saveAnnouncement: (a: Announcement) => void
+  saveAnnouncement: (a: Announcement) => Promise<{ ok: boolean; error?: string }>
   deleteAnnouncement: (id: string) => void
   saveField: (f: FormField) => void
   deleteField: (id: string) => void
@@ -881,16 +881,22 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     cloud.remove('documents', id)
   }, [sessionProfileId])
 
-  const saveAnnouncement = useCallback((a: Announcement) => {
-    setDb((prev) => {
-      const next: DBShape = JSON.parse(JSON.stringify(prev))
-      const i = next.announcements.findIndex((x) => x.id === a.id)
-      if (i < 0) next.announcements = [a, ...next.announcements]
-      else next.announcements[i] = a
-      next.audit = [audit(prev, 'announcement.save', 'announcements', a.id, null, { title: a.title }), ...next.audit]
-      return next
-    })
-    cloud.upsertAnnouncement(a)
+  const saveAnnouncement = useCallback(async (a: Announcement) => {
+    try {
+      const saved = await cloud.upsertAnnouncement(a)
+      if (!saved) throw new Error('No se recibió confirmación de la base de datos.')
+      setDb((prev) => {
+        const next: DBShape = JSON.parse(JSON.stringify(prev))
+        const i = next.announcements.findIndex((x) => x.id === saved.id)
+        if (i < 0) next.announcements = [saved, ...next.announcements]
+        else next.announcements[i] = saved
+        next.audit = [audit(prev, 'announcement.save', 'announcements', saved.id, null, { title: saved.title }), ...next.audit]
+        return next
+      })
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
   }, [sessionProfileId])
 
   const deleteAnnouncement = useCallback((id: string) => {
