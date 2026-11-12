@@ -121,11 +121,13 @@ export const cloud = {
   },
   async upsertEvent(e: EventItem) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('events').upsert(e))
+    const { error } = await supabase.from('events').upsert(e)
+    if (error) throw error
   },
   async upsertSession(s: SessionItem) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('event_sessions').upsert(s))
+    const { error } = await supabase.from('event_sessions').upsert(s)
+    if (error) throw error
   },
   async upsertDocument(d: DocumentItem) {
     if (!can() || !supabase) return
