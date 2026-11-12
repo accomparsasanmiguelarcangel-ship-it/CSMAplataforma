@@ -264,6 +264,8 @@ export function AdminParticipantDetail() {
   const [receipt, setReceipt] = useState<string | null>(null)
   const [feeModal, setFeeModal] = useState(false)
   const [feeValue, setFeeValue] = useState('')
+  const [editParticipation, setEditParticipation] = useState<NonNullable<Participant['participation_type']>>('Mujer')
+  const [editBirthDate, setEditBirthDate] = useState('')
   const [feeReason, setFeeReason] = useState('')
   const [feeSaving, setFeeSaving] = useState(false)
   const [feeError, setFeeError] = useState('')
@@ -334,7 +336,7 @@ export function AdminParticipantDetail() {
           <SectionCard title="Estado de cuenta">
             <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
               <div className="tiny muted">Costo asignado: <b>{money(acc.total_amount)}</b>{p.fee_amount !== null && p.fee_amount !== undefined ? ' · Monto especial' : ' · Monto general'}</div>
-              <button className="btn btn-sm" onClick={() => { setFeeValue(p.fee_amount === null || p.fee_amount === undefined ? '' : String(p.fee_amount)); setFeeReason(p.fee_adjustment_reason || ''); setFeeError(''); setFeeModal(true) }}>
+              <button className="btn btn-sm" onClick={() => { setFeeValue(p.fee_amount === null || p.fee_amount === undefined ? '' : String(p.fee_amount)); setEditParticipation(p.participation_type || 'Mujer'); setEditBirthDate(p.birth_date || ''); setFeeReason(p.fee_adjustment_reason || ''); setFeeError(''); setFeeModal(true) }}>
                 <Icon name="edit" size={13} /> Ajustar / condonar
               </button>
             </div>
@@ -451,7 +453,7 @@ export function AdminParticipantDetail() {
         )}
       </SectionCard>
 
-      <Modal open={feeModal} onClose={() => { if (!feeSaving) setFeeModal(false) }} title="Ajustar cuota del participante"
+      <Modal open={feeModal} onClose={() => { if (!feeSaving) setFeeModal(false) }} title="Editar datos y cuota del participante"
         footer={<>
           <button className="btn" disabled={feeSaving} onClick={() => setFeeModal(false)}>Cancelar</button>
           <button className="btn btn-primary" disabled={feeSaving || (feeValue.trim() !== '' && (!Number.isFinite(Number(feeValue)) || Number(feeValue) < 0 || Number(feeValue) > db.settings.total_amount)) || (feeValue.trim() !== '' && !feeReason.trim())}
@@ -461,6 +463,8 @@ export function AdminParticipantDetail() {
               setFeeSaving(true)
               const amount = feeValue.trim() === '' ? null : Number(feeValue)
               const result = await updateParticipant(p.id, {
+                participation_type: editParticipation,
+                birth_date: editBirthDate || null,
                 fee_amount: amount,
                 fee_adjustment_reason: amount === null ? null : feeReason.trim(),
                 fee_adjusted_by: amount === null ? null : user?.profile.id || null,
@@ -474,6 +478,16 @@ export function AdminParticipantDetail() {
           </button>
         </>}>
         <div className="stack">
+          <div className="form-grid">
+            <Field label="Participación">
+              <select className="select" value={editParticipation} onChange={(e) => setEditParticipation(e.target.value as NonNullable<Participant['participation_type']>)}>
+                <option value="Mujer">Mujer</option><option value="Varón">Varón</option><option value="Músico">Músico</option><option value="Gala">Gala</option>
+              </select>
+            </Field>
+            <Field label="Fecha de nacimiento">
+              <input className="input" type="date" max={new Date().toISOString().slice(0, 10)} value={editBirthDate} onChange={(e) => setEditBirthDate(e.target.value)} />
+            </Field>
+          </div>
           <div className="banner info"><Icon name="info" size={16} /><div>Deja el monto vacío para usar la cuota general ({money(db.settings.total_amount)}). Escribe <b>0</b> para condonar totalmente o un monto menor para aplicar una rebaja.</div></div>
           <Field label="Monto que debe pagar (S/)">
             <input className="input" type="number" min="0" max={db.settings.total_amount} step="0.01" value={feeValue} onChange={(e) => setFeeValue(e.target.value)} placeholder={String(db.settings.total_amount)} />
