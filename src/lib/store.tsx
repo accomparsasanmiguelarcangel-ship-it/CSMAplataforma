@@ -107,8 +107,8 @@ interface StoreCtx {
   registerAttendance: (a: {
     participantId: string; sessionId: string; status?: AttendanceStatus;
     method?: 'qr' | 'manual'; entryType?: 'entrada' | 'salida'; notes?: string; force?: boolean
-  }) => { ok: boolean; error?: string; firstEntryAt?: string; card?: LookupCard }
-  saveAbsence: (sessionId: string, participantId: string, status: AttendanceStatus, notes: string) => { ok: boolean; error?: string }
+  }) => Promise<{ ok: boolean; error?: string; firstEntryAt?: string; card?: LookupCard }>
+  saveAbsence: (sessionId: string, participantId: string, status: AttendanceStatus, notes: string) => Promise<{ ok: boolean; error?: string }>
   saveEvent: (e: EventItem) => void
   deleteEvent: (id: string) => void
   saveSession: (s: SessionItem) => Promise<{ ok: boolean; error?: string }>
@@ -688,7 +688,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
-  const registerAttendance = useCallback((a: {
+  const registerAttendance = useCallback(async (a: {
     participantId: string; sessionId: string; status?: AttendanceStatus;
     method?: 'qr' | 'manual'; entryType?: 'entrada' | 'salida'; notes?: string; force?: boolean
   }) => {
@@ -698,7 +698,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const participant = cur.participants.find((p) => p.id === a.participantId)
     if (!participant) return { ok: false, error: 'Participante no encontrado.' }
     const entryType = a.entryType || 'entrada'
-
     const existing = cur.attendance.find(
       (x) => x.participant_id === a.participantId && x.session_id === a.sessionId && x.entry_type === entryType &&
         x.status !== 'falta_justificada' && x.status !== 'falta_injustificada' && x.status !== 'permiso',
@@ -710,17 +709,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         firstEntryAt: existing.recorded_at,
       }
     }
-
-    // Estado automático: tardanza si supera la hora límite de la jornada
     let status: AttendanceStatus = a.status || 'presente'
     if (!a.status && entryType === 'entrada') {
       const nowMin = new Date().getHours() * 60 + new Date().getMinutes()
       const [hh, mm] = (session.late_after || '23:59').split(':').map(Number)
       if (nowMin > hh * 60 + mm) status = 'tardanza'
     }
-
     const record: Attendance = {
-      id: uid('at'),
+      id: existing && a.force ? existing.id : uid('at'),
       participant_id: a.participantId,
       session_id: a.sessionId,
       event_id: session.event_id,
@@ -731,37 +727,49 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       recorded_by_email: cur.profiles.find((p) => p.id === sessionProfileId)?.email || 'sistema',
       notes: a.notes || null,
     }
-
+    try {
+      await cloud.attendance(record)
+    } catch (e) {
+      return { ok: false, error: 'No se pudo guardar la asistencia en el servidor: ' + (e instanceof Error ? e.message : String(e)) }
+    }
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
-      next.attendance = [record, ...next.attendance]
+      const index = next.attendance.findIndex((x) => x.id === record.id)
+      if (index >= 0) next.attendance[index] = record
+      else next.attendance = [record, ...next.attendance]
       next.audit = [audit(prev, 'attendance.register', 'attendance', record.id, null, { ...record }), ...next.audit]
       return next
     })
-    cloud.attendance(record)
     return { ok: true }
   }, [sessionProfileId])
 
-  const saveAbsence = useCallback((sessionId: string, participantId: string, status: AttendanceStatus, notes: string) => {
+  const saveAbsence = useCallback(async (sessionId: string, participantId: string, status: AttendanceStatus, notes: string) => {
     const cur = dbRef.current
     const session = cur.sessions.find((s) => s.id === sessionId)
     if (!session) return { ok: false, error: 'Jornada no válida.' }
+    const prior = cur.attendance.findIndex((x) => x.participant_id === participantId && x.session_id === sessionId && x.entry_type === 'entrada')
+    const existing = prior >= 0 ? cur.attendance[prior] : null
+    const rec: Attendance = {
+      id: existing?.id || uid('at'),
+      participant_id: participantId,
+      session_id: sessionId,
+      event_id: session.event_id,
+      entry_type: 'entrada',
+      status,
+      method: 'manual',
+      recorded_at: existing?.recorded_at || nowISO(),
+      recorded_by_email: cur.profiles.find((p) => p.id === sessionProfileId)?.email || 'sistema',
+      notes: notes || null,
+    }
+    try {
+      await cloud.attendance(rec)
+    } catch (e) {
+      return { ok: false, error: 'No se pudo guardar la asistencia en el servidor: ' + (e instanceof Error ? e.message : String(e)) }
+    }
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
-      const prior = next.attendance.findIndex((x) => x.participant_id === participantId && x.session_id === sessionId && x.entry_type === 'entrada')
-      const rec: Attendance = {
-        id: prior >= 0 ? next.attendance[prior].id : uid('at'),
-        participant_id: participantId,
-        session_id: sessionId,
-        event_id: session.event_id,
-        entry_type: 'entrada',
-        status,
-        method: 'manual',
-        recorded_at: prior >= 0 ? next.attendance[prior].recorded_at : nowISO(),
-        recorded_by_email: prev.profiles.find((p) => p.id === sessionProfileId)?.email || 'sistema',
-        notes: notes || null,
-      }
-      if (prior >= 0) next.attendance[prior] = rec
+      const index = next.attendance.findIndex((x) => x.id === rec.id)
+      if (index >= 0) next.attendance[index] = rec
       else next.attendance = [rec, ...next.attendance]
       next.audit = [audit(prev, 'attendance.absence', 'attendance', rec.id, null, { status, notes }), ...next.audit]
       return next
