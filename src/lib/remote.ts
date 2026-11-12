@@ -47,10 +47,30 @@ export async function cloudLoad(): Promise<Partial<DBShape> | null> {
 
     const g = <T,>(r: { data: Row[] | null }): T[] => ((r.data || []) as unknown) as T[]
 
+    const participantRows = await Promise.all(g<Participant>(participants).map(async (p) => {
+      const storagePath = p.photo_storage_path || (p.code ? `participantes/${p.code}/${p.code}_SELFIE.jpg` : null)
+      let photoUrl: string | null = null
+      if (storagePath && supabase) {
+        const { data } = await supabase.storage.from('private-files').createSignedUrl(storagePath, 3600)
+        photoUrl = data?.signedUrl || null
+      }
+      return { ...p, photo_url: photoUrl, photo_storage_path: p.photo_storage_path || storagePath, extra: (p.extra as Record<string, string>) || {} }
+    }))
+    const paymentRows = await Promise.all(g<Payment>(payments).map(async (p) => {
+      const participant = participantRows.find((x) => x.id === p.participant_id)
+      const storagePath = p.receipt_storage_path || (participant?.code && p.receipt_drive_id
+        ? `participantes/${participant.code}/${p.receipt_drive_id}` : null)
+      let receiptUrl: string | null = null
+      if (storagePath && supabase) {
+        const { data } = await supabase.storage.from('private-files').createSignedUrl(storagePath, 3600)
+        receiptUrl = data?.signedUrl || null
+      }
+      return { ...p, receipt_url: receiptUrl, receipt_storage_path: p.receipt_storage_path || storagePath }
+    }))
     return {
       profiles: g<Profile>(profiles),
-      participants: g<Participant>(participants).map((p) => ({ ...p, extra: (p.extra as Record<string, string>) || {} })),
-      payments: g<Payment>(payments),
+      participants: participantRows,
+      payments: paymentRows,
       paymentReviews: reviews.data ? ((reviews.data as unknown) as DBShape['paymentReviews']) : [],
       events: g<EventItem>(events),
       sessions: g<SessionItem>(sessions),
@@ -82,11 +102,13 @@ export const cloud = {
   },
   async upsertPayment(p: Payment) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('payments').upsert({
+    const { error } = await supabase.from('payments').upsert({
       id: p.id, participant_id: p.participant_id, seq: p.seq, amount: p.amount,
       operation_number: p.operation_number, method: p.method, concept: p.concept, paid_at: p.paid_at,
-      receipt_drive_id: p.receipt_drive_id, status: p.status, notes: p.notes, reject_reason: p.reject_reason,
-    }))
+      receipt_drive_id: p.receipt_drive_id, receipt_storage_path: p.receipt_storage_path || null,
+      status: p.status, notes: p.notes, reject_reason: p.reject_reason,
+    })
+    if (error) throw error
   },
   async review(paymentId: string, action: string, newStatus: string, notes: string) {
     if (!can() || !supabase) return

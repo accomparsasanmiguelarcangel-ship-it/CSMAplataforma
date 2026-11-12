@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import {
@@ -18,7 +18,7 @@ export function AdminScanner() {
   const toast = useToast()
   const [card, setCard] = useState<LookupCard | null>(null)
   const [manual, setManual] = useState('')
-  const [sessionId, setSessionId] = useState(db.sessions[0]?.id || '')
+  const [sessionId, setSessionId] = useState(() => db.sessions.find((x) => x.session_date === todayISO())?.id || '')
   const [err, setErr] = useState('')
   const [last, setLast] = useState<{ name: string; at: string; status: string } | null>(null)
   const [warnDup, setWarnDup] = useState<string | null>(null)
@@ -27,9 +27,13 @@ export function AdminScanner() {
   const event = session ? db.events.find((e) => e.id === session.event_id) : null
 
   const todaySessions = db.sessions.filter((s) => s.session_date === todayISO())
-  const suggestedSessions = todaySessions.length ? todaySessions : db.sessions
+  const suggestedSessions = todaySessions
+  useEffect(() => {
+    if (!sessionId && todaySessions.length) setSessionId(todaySessions[0].id)
+  }, [sessionId, todaySessions])
 
   const onDetected = (raw: string) => {
+    if (!sessionId || !session) { setErr('No hay una jornada programada para hoy. Registra primero el evento y su jornada en Eventos y jornadas.'); return }
     const token = parseQr(raw)
     if (!token) { setErr('El código escaneado no pertenece a esta asociación.'); return }
     const found = lookupByToken(token)
@@ -74,7 +78,8 @@ export function AdminScanner() {
         <div className="row wrap">
           <div className="field" style={{ minWidth: 260, flex: 1 }}>
             <label>Jornada activa</label>
-            <select className="select" value={sessionId} onChange={(e) => setSessionId(e.target.value)}>
+            <select className="select" value={sessionId} onChange={(e) => { setSessionId(e.target.value); setErr(""); setCard(null) }} disabled={suggestedSessions.length === 0}>
+              {suggestedSessions.length === 0 && <option value="">No hay jornadas programadas hoy</option>}
               {suggestedSessions.map((s) => (
                 <option key={s.id} value={s.id}>
                   {db.events.find((e) => e.id === s.event_id)?.name} — {s.name} ({s.session_date})
@@ -88,11 +93,16 @@ export function AdminScanner() {
             <div className="tiny muted">{session ? `${session.start_time}–${session.end_time} · tardanza después de ${session.late_after}` : ''}</div>
           </div>
         </div>
+        {suggestedSessions.length === 0 && (
+          <Banner tone="warn" title="No hay jornada disponible">
+            No existe una jornada programada para hoy. Crea primero el evento y su jornada en Eventos y jornadas; luego podrás registrar asistencias.
+          </Banner>
+        )}
       </div>
 
       <div className="grid g2" style={{ alignItems: 'start' }}>
         <SectionCard title="Escáner QR" sub="Cámara trasera del dispositivo">
-          <QrScanner onDetected={onDetected} onError={(m) => setErr(m)} />
+          {sessionId && session ? <QrScanner onDetected={onDetected} onError={(m) => setErr(m)} /> : <Banner tone="info" title="Escáner en espera">Selecciona o programa una jornada para habilitar el escaneo.</Banner>}
           <div className="divider" />
           <div className="field">
             <label>Registro manual (participante sin QR)</label>
@@ -200,7 +210,7 @@ export function AdminEvents() {
   const persist = () => {
     if (!edit) return
     if (!edit.name.trim()) { toast.push('El nombre del evento es obligatorio.', 'err'); return }
-    saveEvent({ ...edit, id: edit.id || `ev-${Date.now()}`, starts_at: new Date(edit.starts_at).toISOString(), ends_at: new Date(edit.ends_at).toISOString() })
+    saveEvent({ ...edit, id: edit.id || crypto.randomUUID(), starts_at: new Date(edit.starts_at).toISOString(), ends_at: new Date(edit.ends_at).toISOString() })
     toast.push('Evento guardado.')
     setEdit(null)
   }
@@ -208,7 +218,7 @@ export function AdminEvents() {
   const persistSession = () => {
     if (!sess) return
     if (!sess.name.trim() || !sess.event_id) { toast.push('Completa los datos de la jornada.', 'err'); return }
-    saveSession({ ...sess, id: sess.id || `se-${Date.now()}` })
+    saveSession({ ...sess, id: sess.id || crypto.randomUUID() })
     toast.push('Jornada guardada.')
     setSess(null)
   }

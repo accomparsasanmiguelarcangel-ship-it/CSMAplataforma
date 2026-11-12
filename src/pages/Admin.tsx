@@ -459,7 +459,7 @@ export function AdminParticipantDetail() {
 /* ── INSCRIPCIONES (revisión) ───────────────────────────────────────────── */
 export function AdminEnrollments() {
   const { db, setEnrollmentStatus } = useStore()
-  const [filter, setFilter] = useState<'pendiente' | 'observado' | 'rechazado' | 'todos'>('pendiente')
+  const [filter, setFilter] = useState<'pendiente' | 'observado' | 'rechazado' | 'activo' | 'todos'>('pendiente')
   const [photo, setPhoto] = useState<Participant | null>(null)
   const [obs, setObs] = useState<Record<string, string>>({})
   const [queue, setQueue] = useState<Array<{ queue_no: number; user_id: string; email: string; scheduled_at: string; status: string; created_at: string }>>([])
@@ -501,6 +501,7 @@ export function AdminEnrollments() {
           <option value="pendiente">Pendientes</option>
           <option value="observado">Observadas</option>
           <option value="rechazado">Rechazadas</option>
+          <option value="activo">Aprobadas</option>
           <option value="todos">Todas</option>
         </select>
       </div>
@@ -571,15 +572,19 @@ export function AdminEnrollments() {
               <input className="input" value={obs[p.id] || ''} onChange={(e) => setObs((s) => ({ ...s, [p.id]: e.target.value }))} placeholder="Motivo u observación" />
             </div>
             <div className="row wrap" style={{ marginTop: 10 }}>
-              <button className="btn btn-primary btn-sm" disabled={approving === p.id} onClick={() => approve(p)}>
-                <Icon name="check" size={14} /> {approving === p.id ? 'Aprobando…' : 'Aprobar y activar'}
-              </button>
-              <button className="btn btn-sm" onClick={() => setEnrollmentStatus(p.id, 'observado', obs[p.id] || 'Ficha observada: regularizar datos.')}>
-                Observar
-              </button>
-              <button className="btn btn-danger btn-sm" onClick={() => setEnrollmentStatus(p.id, 'rechazado', obs[p.id] || 'Inscripción rechazada.')}>
-                Rechazar
-              </button>
+              {p.status !== 'activo' && (
+                <>
+                  <button className="btn btn-primary btn-sm" disabled={approving === p.id} onClick={() => approve(p)}>
+                    <Icon name="check" size={14} /> {approving === p.id ? 'Aprobando…' : 'Aprobar y activar'}
+                  </button>
+                  <button className="btn btn-sm" onClick={() => setEnrollmentStatus(p.id, 'observado', obs[p.id] || 'Ficha observada: regularizar datos.')}>
+                    Observar
+                  </button>
+                  <button className="btn btn-danger btn-sm" onClick={() => setEnrollmentStatus(p.id, 'rechazado', obs[p.id] || 'Inscripción rechazada.')}>
+                    Rechazar
+                  </button>
+                </>
+              )}
               <div className="spacer" />
               <Link to={`/admin/participantes/${p.id}`} className="btn btn-ghost btn-sm">Ver ficha</Link>
             </div>
