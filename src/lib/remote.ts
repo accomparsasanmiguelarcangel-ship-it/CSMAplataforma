@@ -52,13 +52,13 @@ export async function cloudLoad(): Promise<Partial<DBShape> | null> {
     const photoPaths = participantRows.map((p) => p.photo_storage_path).filter((x): x is string => !!x)
     const receiptPaths = paymentRows.map((p) => p.receipt_storage_path).filter((x): x is string => !!x)
     const [photoSigned, receiptSigned] = await Promise.all([
-      photoPaths.length ? supabase.storage.from('private-files').createSignedUrls(photoPaths, 3600) : Promise.resolve({ data: { signedUrls: [] }, error: null }),
+      photoPaths.length ? supabase.storage.from('private-files').createSignedUrls(photoPaths, 3600) : Promise.resolve({ data: [], error: null }),
       receiptPaths.length ? supabase.storage.from('private-files').createSignedUrls(receiptPaths, 3600) : Promise.resolve({ data: { signedUrls: [] }, error: null }),
     ])
     const signedMap = (items: Array<{ path: string; signedUrl: string }> | null | undefined) =>
       new Map((items || []).map((x) => [x.path, x.signedUrl]))
-    const photoMap = signedMap(photoSigned.data?.signedUrls)
-    const receiptMap = signedMap(receiptSigned.data?.signedUrls)
+    const photoMap = signedMap(photoSigned.data)
+    const receiptMap = signedMap(receiptSigned.data)
 
     return {
       profiles: g<Profile>(profiles),
