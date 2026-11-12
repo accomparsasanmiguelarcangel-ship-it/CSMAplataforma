@@ -24,6 +24,16 @@ export function AdminScanner() {
   const [last, setLast] = useState<{ name: string; at: string; status: string } | null>(null)
   const [warnDup, setWarnDup] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (db.sessions.some((s) => s.id === sessionId)) return
+    const today = todayISO()
+    const preferred = [...db.sessions]
+      .filter((s) => s.session_date >= today)
+      .sort((a, b) => a.session_date.localeCompare(b.session_date) || a.start_time.localeCompare(b.start_time))[0]
+      || [...db.sessions].sort((a, b) => b.session_date.localeCompare(a.session_date) || b.start_time.localeCompare(a.start_time))[0]
+    setSessionId(preferred?.id || '')
+  }, [db.sessions, sessionId])
+
   const session = db.sessions.find((s) => s.id === sessionId)
   const event = session ? db.events.find((e) => e.id === session.event_id) : null
 
@@ -31,6 +41,10 @@ export function AdminScanner() {
   const suggestedSessions = todaySessions.length ? todaySessions : db.sessions
 
   const onDetected = (raw: string) => {
+    if (!sessionId || !session) {
+      setErr('Primero programa una jornada en Eventos y jornadas y selecciónala aquí.')
+      return
+    }
     const token = parseQr(raw)
     if (!token) { setErr('El código escaneado no pertenece a esta asociación.'); return }
     const found = lookupByToken(token)
@@ -93,7 +107,11 @@ export function AdminScanner() {
 
       <div className="grid g2" style={{ alignItems: 'start' }}>
         <SectionCard title="Escáner QR" sub="Cámara trasera del dispositivo">
-          <QrScanner onDetected={onDetected} onError={(m) => setErr(m)} />
+          {session ? <QrScanner onDetected={onDetected} onError={(m) => setErr(m)} /> : (
+            <Banner tone="warn" title="No hay jornadas programadas">
+              Para registrar asistencia, crea primero un evento y al menos una jornada desde <Link to="/admin/eventos">Eventos y jornadas</Link>. Cuando exista una jornada, aparecerá aquí para seleccionarla.
+            </Banner>
+          )}
           <div className="divider" />
           <div className="field">
             <label>Registro manual (participante sin QR)</label>
