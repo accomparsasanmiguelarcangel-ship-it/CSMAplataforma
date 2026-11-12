@@ -454,7 +454,7 @@ export function AdminParticipantDetail() {
       <Modal open={feeModal} onClose={() => { if (!feeSaving) setFeeModal(false) }} title="Ajustar cuota del participante"
         footer={<>
           <button className="btn" disabled={feeSaving} onClick={() => setFeeModal(false)}>Cancelar</button>
-          <button className="btn btn-primary" disabled={feeSaving || (feeValue.trim() !== '' && (!Number.isFinite(Number(feeValue)) || Number(feeValue) < 0)) || (feeValue.trim() !== '' && !feeReason.trim())}
+          <button className="btn btn-primary" disabled={feeSaving || (feeValue.trim() !== '' && (!Number.isFinite(Number(feeValue)) || Number(feeValue) < 0 || Number(feeValue) > db.settings.total_amount)) || (feeValue.trim() !== '' && !feeReason.trim())}
             onClick={async () => {
               setFeeError('')
               if (feeValue.trim() !== '' && !feeReason.trim()) { setFeeError('Indica el motivo de la rebaja o condonación.'); return }
@@ -476,11 +476,12 @@ export function AdminParticipantDetail() {
         <div className="stack">
           <div className="banner info"><Icon name="info" size={16} /><div>Deja el monto vacío para usar la cuota general ({money(db.settings.total_amount)}). Escribe <b>0</b> para condonar totalmente o un monto menor para aplicar una rebaja.</div></div>
           <Field label="Monto que debe pagar (S/)">
-            <input className="input" type="number" min="0" step="0.01" value={feeValue} onChange={(e) => setFeeValue(e.target.value)} placeholder={String(db.settings.total_amount)} />
+            <input className="input" type="number" min="0" max={db.settings.total_amount} step="0.01" value={feeValue} onChange={(e) => setFeeValue(e.target.value)} placeholder={String(db.settings.total_amount)} />
           </Field>
           {feeValue.trim() !== '' && <Field label="Motivo de la rebaja o condonación" required>
             <textarea className="textarea" value={feeReason} onChange={(e) => setFeeReason(e.target.value)} placeholder="Ej. Apoyo aprobado por la directiva." />
           </Field>}
+          {feeValue.trim() !== '' && Number(feeValue) > db.settings.total_amount && <Banner tone="bad" title="Monto no válido">La cuota ajustada no puede superar el monto general de {money(db.settings.total_amount)}.</Banner>}
           {feeError && <Banner tone="bad" title="No se pudo guardar">{feeError}</Banner>}
         </div>
       </Modal>
