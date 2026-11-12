@@ -1,0 +1,79 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/android-apk.yml"
+      - "capacitor.config.json"
+      - "vite.config.ts"
+      - "index.html"
+      - "src/**"
+      - "public/**"
+      - "package.json"
+      - "package-lock.json"
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install Capacitor Android tooling
+        run: npm install --no-save --package-lock=false --legacy-peer-deps @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest
+
+      - name: Build web app for Android
+        env:
+          VITE_SUPABASE_URL: https://wtwvytwsnffdhijmnosv.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_4PbFWBA5vMzjDBA-FtFBDw_pByUQhiy
+        run: npm run build -- --mode android
+
+      - name: Generate Android project
+        run: npx cap add android
+
+      - name: Sync Capacitor assets
+        run: npx cap sync android
+
+      - name: Enable camera permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          content = manifest.read_text()
+          permission = '    <uses-permission android:name="android.permission.CAMERA" />'
+          if "android.permission.CAMERA" not in content:
+              content = content.replace("<application", permission + "\\n    <application", 1)
+          manifest.write_text(content)
+          PY
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparsa-san-miguel-arcangel-android
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
