@@ -454,9 +454,9 @@ export function PNewPayment() {
   const suggested = useMemo(() => {
     if (!acc) return 0
     const first = myPays.filter((x) => x.status === 'validado').length === 0
-    if (first) return Math.min(db.settings.advance_amount, acc.balance || db.settings.advance_amount)
+    if (first) return Math.min(db.settings.advance_amount, acc.total_amount, acc.balance)
     return Math.min(
-      Math.round((db.settings.total_amount - db.settings.advance_amount) / Math.max(1, db.settings.installments - 1)),
+      Math.round((acc.total_amount - Math.min(db.settings.advance_amount, acc.total_amount)) / Math.max(1, db.settings.installments - 1)),
       acc.balance,
     )
   }, [acc, myPays, db.settings])
