@@ -183,9 +183,15 @@ export const cloud = {
   },
   async settings(s: Settings) {
     if (!can() || !supabase) throw new Error('No hay conexión activa con la base de datos.')
-    const { data, error } = await supabase.from('settings').upsert({ ...s, id: 'global' }, { onConflict: 'id' }).select('*').single()
+    // La fila global ya existe y RLS autoriza UPDATE a superadministradores.
+    // UPDATE evita exigir una política INSERT innecesaria como ocurría con upsert.
+    const { data, error } = await supabase.from('settings')
+      .update({ ...s, id: 'global' })
+      .eq('id', 'global')
+      .select('*')
+      .single()
     if (error) throw error
-    if (!data) throw new Error('Supabase no confirmó el guardado de la configuración.')
+    if (!data) throw new Error('No existe la configuración global para actualizar.')
     return data as Settings
   },
   async upsertField(f: FormField) {
