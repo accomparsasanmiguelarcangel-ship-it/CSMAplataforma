@@ -149,7 +149,11 @@ export const cloud = {
   },
   async upsertSession(s: SessionItem) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('event_sessions').upsert(s))
+    const { error } = await supabase.from('event_sessions').upsert({
+      id: s.id, event_id: s.event_id, name: s.name, session_date: s.session_date,
+      start_time: s.start_time, end_time: s.end_time, late_after: s.late_after,
+    })
+    if (error) throw error
   },
   async upsertDocument(d: DocumentItem) {
     if (!can() || !supabase) return
