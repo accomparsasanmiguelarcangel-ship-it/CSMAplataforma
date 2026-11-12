@@ -252,6 +252,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       const participant = participantRow as Participant & { photo_storage_path?: string | null; qr_drive_id?: string | null }
       const warnings: string[] = []
+      // Al iniciar sesión después de que la app ya cargó, la consulta inicial de cloudLoad
+      // ocurrió sin usuario autenticado. Cargamos aquí los comunicados visibles al participante.
+      const { data: announcementRows, error: announcementsError } = await supabase
+        .from('announcements')
+        .select('*')
+        .in('audience', ['todos', 'participantes'])
+        .order('pinned', { ascending: false })
+        .order('published_at', { ascending: false })
+      if (announcementsError) warnings.push('No se pudieron cargar los comunicados: ' + announcementsError.message)
+
       const selfieKey = 'csma.pendingSelfie.' + data.user.id
 
       try {
@@ -330,6 +340,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         profiles: [profile, ...prev.profiles.filter((p) => p.id !== profile.id)],
         participants: [participantForUi, ...prev.participants.filter((p) => p.id !== participant.id)],
+        ...(announcementsError ? {} : { announcements: (announcementRows || []) as Announcement[] }),
       }))
       persistSession(profile.id)
       return { ok: true, warning: warnings.length ? warnings.join(' ') : undefined }
