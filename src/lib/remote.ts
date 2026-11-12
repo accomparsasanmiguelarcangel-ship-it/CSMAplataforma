@@ -47,10 +47,28 @@ export async function cloudLoad(): Promise<Partial<DBShape> | null> {
 
     const g = <T,>(r: { data: Row[] | null }): T[] => ((r.data || []) as unknown) as T[]
 
+    const participantRows = g<Participant>(participants)
+    const paymentRows = g<Payment>(payments)
+    const photoPaths = participantRows.map((p) => p.photo_storage_path).filter((x): x is string => !!x)
+    const receiptPaths = paymentRows.map((p) => p.receipt_storage_path).filter((x): x is string => !!x)
+    const [photoSigned, receiptSigned] = await Promise.all([
+      photoPaths.length ? supabase.storage.from('private-files').createSignedUrls(photoPaths, 3600) : Promise.resolve({ data: { signedUrls: [] }, error: null }),
+      receiptPaths.length ? supabase.storage.from('private-files').createSignedUrls(receiptPaths, 3600) : Promise.resolve({ data: { signedUrls: [] }, error: null }),
+    ])
+    const signedMap = (items: Array<{ path: string; signedUrl: string }> | null | undefined) =>
+      new Map((items || []).map((x) => [x.path, x.signedUrl]))
+    const photoMap = signedMap(photoSigned.data?.signedUrls)
+    const receiptMap = signedMap(receiptSigned.data?.signedUrls)
+
     return {
       profiles: g<Profile>(profiles),
-      participants: g<Participant>(participants).map((p) => ({ ...p, extra: (p.extra as Record<string, string>) || {} })),
-      payments: g<Payment>(payments),
+      participants: participantRows.map((p) => ({
+        ...p, extra: (p.extra as Record<string, string>) || {},
+        photo_url: p.photo_storage_path ? photoMap.get(p.photo_storage_path) || null : null,
+      })),
+      payments: paymentRows.map((p) => ({
+        ...p, receipt_url: p.receipt_storage_path ? receiptMap.get(p.receipt_storage_path) || null : null,
+      })),
       paymentReviews: reviews.data ? ((reviews.data as unknown) as DBShape['paymentReviews']) : [],
       events: g<EventItem>(events),
       sessions: g<SessionItem>(sessions),
@@ -76,17 +94,19 @@ export const cloud = {
     if (!can() || !supabase) return
     await safe(() => supabase!.from('participants').upsert({
       id: p.id, code: p.code, dni: p.dni, first_names: p.first_names, last_names: p.last_names,
-      phone: p.phone, address: p.address, group_name: p.group_name, photo_drive_id: p.photo_drive_id,
+      phone: p.phone, address: p.address, group_name: p.group_name, photo_drive_id: p.photo_drive_id, photo_storage_path: p.photo_storage_path || null,
       status: p.status, qr_token: p.qr_token, notes: p.notes, extra: p.extra, profile_id: p.profile_id,
     }))
   },
   async upsertPayment(p: Payment) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('payments').upsert({
+    const { error } = await supabase.from('payments').upsert({
       id: p.id, participant_id: p.participant_id, seq: p.seq, amount: p.amount,
       operation_number: p.operation_number, method: p.method, concept: p.concept, paid_at: p.paid_at,
-      receipt_drive_id: p.receipt_drive_id, status: p.status, notes: p.notes, reject_reason: p.reject_reason,
-    }))
+      receipt_drive_id: p.receipt_drive_id, receipt_storage_path: p.receipt_storage_path || null,
+      status: p.status, notes: p.notes, reject_reason: p.reject_reason,
+    })
+    if (error) throw error
   },
   async review(paymentId: string, action: string, newStatus: string, notes: string) {
     if (!can() || !supabase) return
