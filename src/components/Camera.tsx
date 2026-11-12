@@ -157,6 +157,7 @@ export function QrScanner({ onDetected, onError }: { onDetected: (raw: string) =
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number>(0)
   const streamRef = useRef<MediaStream | null>(null)
+  const detectedRef = useRef(false)
   const [live, setLive] = useState(false)
   const [msg, setMsg] = useState('')
 
@@ -185,6 +186,7 @@ export function QrScanner({ onDetected, onError }: { onDetected: (raw: string) =
   }, [live])
 
   const start = async () => {
+    detectedRef.current = false
     setMsg('')
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -216,9 +218,12 @@ export function QrScanner({ onDetected, onError }: { onDetected: (raw: string) =
         ctx.drawImage(v, 0, 0, w, h)
         const img = ctx.getImageData(0, 0, w, h)
         const code = jsQR(img.data, w, h, { inversionAttempts: 'dontInvert' })
-        if (code?.data) {
+        if (code?.data && !detectedRef.current) {
+          detectedRef.current = true
           if (navigator.vibrate) navigator.vibrate(70)
+          stop()
           onDetected(code.data)
+          return
         }
       }
     }
