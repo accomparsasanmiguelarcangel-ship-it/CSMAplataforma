@@ -100,7 +100,7 @@ interface StoreCtx {
   logout: () => Promise<void>
   register: (input: RegistrationInput) => Promise<{ ok: boolean; error?: string; code?: string; participantId?: string; scheduledAt?: string; queueNo?: number }>
   submitPayment: (participantId: string, input: PaymentInput) => Promise<{ ok: boolean; error?: string; seq?: number; reference?: string }>
-  reviewPayment: (paymentId: string, action: 'validado' | 'rechazado' | 'observado' | 'reenvio_solicitado', notes: string, amount?: number) => void
+  reviewPayment: (paymentId: string, action: 'validado' | 'rechazado' | 'observado' | 'reenvio_solicitado', notes: string, amount?: number) => Promise<{ ok: boolean; error?: string }>
   setEnrollmentStatus: (participantId: string, status: Participant['status'], notes?: string) => void
   updateParticipant: (participantId: string, patch: Partial<Participant>) => void
   lookupByToken: (token: string) => LookupCard | null
@@ -552,49 +552,60 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
     return { ok: true, seq, reference }
   }, [])
-  const reviewPayment = useCallback((paymentId: string, action: 'validado' | 'rechazado' | 'observado' | 'reenvio_solicitado', notes: string, amount?: number) => {
+  const reviewPayment = useCallback(async (paymentId: string, action: 'validado' | 'rechazado' | 'observado' | 'reenvio_solicitado', notes: string, amount?: number) => {
+    const current = dbRef.current.payments.find((p) => p.id === paymentId)
+    if (!current) return { ok: false, error: 'No se encontró el pago que deseas revisar.' }
+
+    const before = { status: current.status, amount: current.amount }
+    const status: Payment['status'] = action === 'validado' ? 'validado' : action === 'rechazado' ? 'rechazado' : 'pendiente'
+    const reviewerProfile = dbRef.current.profiles.find((p) => p.id === sessionProfileId)
+    const reviewedAt = nowISO()
+    const updatedPayment: Payment = {
+      ...current,
+      status,
+      amount: action === 'validado' && typeof amount === 'number' && amount > 0 ? amount : current.amount,
+      reject_reason: action === 'rechazado' ? (notes || 'Comprobante rechazado.') : null,
+      notes: action === 'observado' || action === 'reenvio_solicitado' ? (notes || current.notes) : current.notes,
+      reviewed_at: reviewedAt,
+      reviewed_by: sessionProfileId,
+    }
+    const reviewEntry: DBShape['paymentReviews'][number] = {
+      id: crypto.randomUUID(),
+      payment_id: paymentId,
+      action,
+      previous_status: before.status,
+      new_status: status,
+      amount: updatedPayment.amount,
+      reviewer_email: reviewerProfile?.email || 'sistema',
+      notes: notes || null,
+      created_at: reviewedAt,
+    }
+
+    try {
+      await cloud.review(updatedPayment, reviewEntry, sessionProfileId)
+    } catch (e) {
+      return { ok: false, error: 'No se pudo guardar la validación: ' + (e instanceof Error ? e.message : String(e)) }
+    }
+
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
       const pay = next.payments.find((p) => p.id === paymentId)
       if (!pay) return prev
-      const before = { status: pay.status, amount: pay.amount }
-      const reviewer = prev.profiles.find((p) => p.id === sessionProfileId)?.email || 'sistema'
-      if (action === 'validado') {
-        pay.status = 'validado'
-        if (typeof amount === 'number' && amount > 0) pay.amount = amount
-        pay.reject_reason = null
-      } else if (action === 'rechazado') {
-        pay.status = 'rechazado'
-        pay.reject_reason = notes || 'Comprobante rechazado.'
-      } else {
-        pay.status = 'pendiente'
-        pay.notes = notes || pay.notes
-      }
-      pay.reviewed_at = nowISO()
-      pay.reviewed_by = sessionProfileId
+      Object.assign(pay, updatedPayment)
+      next.paymentReviews = [reviewEntry, ...next.paymentReviews]
 
-      next.paymentReviews = [
-        {
-          id: uid('rev'), payment_id: paymentId, action,
-          previous_status: before.status as Payment['status'], new_status: pay.status,
-          amount: pay.amount, reviewer_email: reviewer, notes: notes || null, created_at: nowISO(),
-        },
-        ...next.paymentReviews,
-      ]
       const participant = next.participants.find((p) => p.id === pay.participant_id)
       if (participant?.profile_id) {
-        const title =
-          action === 'validado' ? 'Pago aprobado' : action === 'rechazado' ? 'Pago rechazado' : 'Pago en revisión'
+        const title = action === 'validado' ? 'Pago aprobado' : action === 'rechazado' ? 'Pago rechazado' : 'Pago en revisión'
         next.notifications = [
           {
-            id: uid('nt'), profile_id: participant.profile_id, title,
-            body:
-              action === 'validado'
-                ? `Tu pago de S/ ${pay.amount.toFixed(2)} fue aprobado. Tu saldo se actualizó automáticamente.`
-                : action === 'rechazado'
-                  ? `Tu comprobante fue rechazado: ${pay.reject_reason} Sube un nuevo comprobante desde MIS PAGOS.`
-                  : `Tu comprobante requiere una nueva revisión: ${notes}`,
-            type: 'pago', read: false, created_at: nowISO(),
+            id: crypto.randomUUID(), profile_id: participant.profile_id, title,
+            body: action === 'validado'
+              ? `Tu pago de S/ ${pay.amount.toFixed(2)} fue aprobado. Tu saldo se actualizó automáticamente.`
+              : action === 'rechazado'
+                ? `Tu comprobante fue rechazado: ${pay.reject_reason} Sube un nuevo comprobante desde MIS PAGOS.`
+                : `Tu comprobante requiere una nueva revisión: ${notes}`,
+            type: 'pago', read: false, created_at: reviewedAt,
           },
           ...next.notifications,
         ]
@@ -605,12 +616,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ]
       return next
     })
-    const status = action === 'validado' ? 'validado' : action === 'rechazado' ? 'rechazado' : 'pendiente'
-    cloud.review(paymentId, action, status, notes)
-    if (typeof amount === 'number') {
-      const p = dbRef.current.payments.find((x) => x.id === paymentId)
-      if (p) cloud.upsertPayment({ ...p, status: status as Payment['status'], amount })
-    }
+    return { ok: true }
   }, [sessionProfileId])
 
   /* ── Participantes ─────────────────────────────────────────────── */
