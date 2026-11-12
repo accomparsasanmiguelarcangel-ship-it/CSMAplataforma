@@ -1,0 +1,9 @@
+{
+  "appId": "org.sanmiguelarcangel.comparsa2004",
+  "appName": "Comparsa San Miguel Arcángel",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https"
+  }
+}
