@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import {
@@ -28,6 +28,9 @@ export function AdminScanner() {
 
   const todaySessions = db.sessions.filter((s) => s.session_date === todayISO())
   const suggestedSessions = todaySessions
+  useEffect(() => {
+    if (!sessionId && todaySessions.length) setSessionId(todaySessions[0].id)
+  }, [sessionId, todaySessions])
 
   const onDetected = (raw: string) => {
     if (!sessionId || !session) { setErr('No hay una jornada programada para hoy. Registra primero el evento y su jornada en Eventos y jornadas.'); return }
@@ -207,7 +210,7 @@ export function AdminEvents() {
   const persist = () => {
     if (!edit) return
     if (!edit.name.trim()) { toast.push('El nombre del evento es obligatorio.', 'err'); return }
-    saveEvent({ ...edit, id: edit.id || `ev-${Date.now()}`, starts_at: new Date(edit.starts_at).toISOString(), ends_at: new Date(edit.ends_at).toISOString() })
+    saveEvent({ ...edit, id: edit.id || crypto.randomUUID(), starts_at: new Date(edit.starts_at).toISOString(), ends_at: new Date(edit.ends_at).toISOString() })
     toast.push('Evento guardado.')
     setEdit(null)
   }
@@ -215,7 +218,7 @@ export function AdminEvents() {
   const persistSession = () => {
     if (!sess) return
     if (!sess.name.trim() || !sess.event_id) { toast.push('Completa los datos de la jornada.', 'err'); return }
-    saveSession({ ...sess, id: sess.id || `se-${Date.now()}` })
+    saveSession({ ...sess, id: sess.id || crypto.randomUUID() })
     toast.push('Jornada guardada.')
     setSess(null)
   }
