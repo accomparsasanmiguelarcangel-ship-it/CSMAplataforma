@@ -37,6 +37,12 @@ jobs:
       - name: Generate Android project
         run: npx cap add android
 
+      - name: Generate Android app icon from comparsa logo
+        run: |
+          mkdir -p assets
+          cp public/img/logo.png assets/icon-only.png
+          npx --yes @capacitor/assets@3.0.5 generate --android
+
       - name: Sync Capacitor assets
         run: npx cap sync android
 
