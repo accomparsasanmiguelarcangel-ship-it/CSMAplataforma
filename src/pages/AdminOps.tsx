@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import {
@@ -9,6 +9,7 @@ import {
   attendanceStatusLabel, dateTime, fullName, money, shortDate, statusTone, timeOnly, todayISO, roleLabel,
 } from '../lib/utils'
 import { parseQr } from '../lib/qr'
+import { edgeCall } from '../lib/supabase'
 import { exportExcel, exportPdf } from '../lib/export'
 import type { AttendanceStatus, DocumentItem, EventItem, FormField, LookupCard, Profile, SessionItem } from '../lib/types'
 
@@ -565,6 +566,21 @@ export function AdminDocuments() {
   const { db, saveDocument, deleteDocument } = useStore()
   const toast = useToast()
   const [edit, setEdit] = useState<DocumentItem | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const syncDrive = async () => {
+    if (syncing) return
+    setSyncing(true)
+    try {
+      const result = await edgeCall<{ ok: boolean; count: number; documents: DocumentItem[] }>('drive-documents', { action: 'sync' })
+      result.documents.forEach((doc) => saveDocument(doc))
+      toast.push(`Drive sincronizado: ${result.count} documento(s).`)
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : 'No se pudo sincronizar Google Drive.', 'err')
+    } finally {
+      setSyncing(false)
+    }
+  }
+  useEffect(() => { void syncDrive() }, [])
   const cats = ['Estatutos', 'Reglamentos internos', 'Reglamentos de participación', 'Normas de convivencia', 'Comunicados', 'Cronogramas', 'Programaciones', 'Actas y acuerdos', 'Otros documentos']
 
   const newDoc = (): DocumentItem => ({
@@ -577,6 +593,7 @@ export function AdminDocuments() {
       <div className="page-head">
         <div><h1>Documentación institucional</h1><p className="lead">Biblioteca privada con control de acceso por estado de pago.</p></div>
         <div className="spacer" />
+        <button className="btn" disabled={syncing} onClick={() => void syncDrive()}><Icon name="refresh-cw" size={15} /> {syncing ? 'Sincronizando…' : 'Actualizar desde Drive'}</button>
         <button className="btn btn-primary" onClick={() => setEdit(newDoc())}><Icon name="plus" size={15} /> Nuevo documento</button>
       </div>
 
