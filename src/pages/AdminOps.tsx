@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import {
@@ -22,6 +22,7 @@ export function AdminScanner() {
   const [err, setErr] = useState('')
   const [last, setLast] = useState<{ name: string; at: string; status: string } | null>(null)
   const [warnDup, setWarnDup] = useState<string | null>(null)
+  const autoSessionStarted = useRef(false)
 
   const session = db.sessions.find((s) => s.id === sessionId)
   const event = session ? db.events.find((e) => e.id === session.event_id) : null
@@ -42,7 +43,8 @@ export function AdminScanner() {
   }), [db.events, today])
 
   useEffect(() => {
-    if (!ready || todaySessions.length || !scheduledEvent) return
+    if (!ready || todaySessions.length || !scheduledEvent || autoSessionStarted.current) return
+    autoSessionStarted.current = true
     const localTime = (value: string) => new Intl.DateTimeFormat('en-GB', {
       timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
     }).format(new Date(value))
