@@ -41,7 +41,13 @@ export const initials = (first: string, last: string): string =>
 export const fullName = (p: { first_names: string; last_names: string }): string =>
   `${p.first_names} ${p.last_names}`.replace(/\s+/g, ' ').trim()
 
-export const todayISO = (): string => new Date().toISOString().slice(0, 10)
+export const todayISO = (): string => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date())
+  const value = (type: string) => parts.find((part) => part.type === type)?.value || ''
+  return `${value('year')}-${value('month')}-${value('day')}`
+}
 
 export const paymentStatusLabel: Record<string, string> = {
   pendiente: 'Pendiente de validación',
