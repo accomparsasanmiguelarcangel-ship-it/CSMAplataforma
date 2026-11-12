@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  base: '/CSMAplataforma/',
+  // GitHub Pages uses its repository subpath; Android bundles assets locally.
+  base: mode === 'android' ? './' : '/CSMAplataforma/',
   server: { port: 5173 },
   build: {
     target: 'es2020',
@@ -11,4 +12,4 @@ export default defineConfig({
     sourcemap: false,
     chunkSizeWarningLimit: 1600,
   },
-})
+}))
