@@ -981,14 +981,25 @@ export function AdminSettings() {
   const toast = useToast()
   const [s, setS] = useState(db.settings)
   const [field, setField] = useState<FormField | null>(null)
+  const [savingSettings, setSavingSettings] = useState(false)
+  useEffect(() => { setS(db.settings) }, [db.settings])
+  const settingsChanged = JSON.stringify(s) !== JSON.stringify(db.settings)
+  const saveSettings = async () => {
+    if (!settingsChanged || savingSettings) return
+    setSavingSettings(true)
+    const result = await updateSettings(s)
+    setSavingSettings(false)
+    if (!result.ok) { toast.push('No se pudo guardar la configuración: ' + (result.error || 'Error desconocido.'), 'err'); return }
+    toast.push('Configuración guardada y verificada.')
+  }
 
   return (
     <div className="page">
       <div className="page-head">
         <div><h1>Configuración</h1><p className="lead">Parámetros de inscripción, cuotas, pagos y numeración.</p></div>
         <div className="spacer" />
-        <button className="btn btn-primary" onClick={() => { updateSettings(s); toast.push('Configuración guardada.') }}>
-          <Icon name="check" size={15} /> Guardar cambios
+        <button className="btn btn-primary" disabled={!settingsChanged || savingSettings} onClick={() => void saveSettings()}>
+          <Icon name="check" size={15} /> {savingSettings ? 'Guardando…' : 'Guardar cambios'}
         </button>
       </div>
 
