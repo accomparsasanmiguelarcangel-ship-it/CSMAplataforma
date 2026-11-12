@@ -74,13 +74,6 @@ export function PHome() {
   const { user, account, db, paymentsOf, attendanceOf, documentsFor } = useStore()
   const p = user?.participant
   const nav = useNavigate()
-  if (!p) return <GuardNoParticipant />
-  const acc = account(p.id)
-  const pays = paymentsOf(p.id)
-  const att = attendanceOf(p.id)
-  const docs = documentsFor(p.id)
-  const nextEvent = [...db.events].filter((e) => new Date(e.starts_at) >= new Date()).sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))[0]
-  const myNotifs = db.notifications.filter((n) => n.profile_id === user?.profile.id && !n.read)
   const [visibleAnnouncements, setVisibleAnnouncements] = useState<Announcement[]>(db.announcements)
   useEffect(() => {
     if (!p || !supabase) {
@@ -108,6 +101,13 @@ export function PHome() {
   }, [p?.id])
   const announcements = [...visibleAnnouncements].sort((a, b) => Number(b.pinned) - Number(a.pinned) || +new Date(b.published_at) - +new Date(a.published_at))
   const featuredAnnouncement = announcements[0]
+  if (!p) return <GuardNoParticipant />
+  const acc = account(p.id)
+  const pays = paymentsOf(p.id)
+  const att = attendanceOf(p.id)
+  const docs = documentsFor(p.id)
+  const nextEvent = [...db.events].filter((e) => new Date(e.starts_at) >= new Date()).sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))[0]
+  const myNotifs = db.notifications.filter((n) => n.profile_id === user?.profile.id && !n.read)
   const pendingPay = pays.find((x) => x.status === 'pendiente')
   const pct = acc.total_amount ? Math.round((acc.total_paid / acc.total_amount) * 100) : 0
 
