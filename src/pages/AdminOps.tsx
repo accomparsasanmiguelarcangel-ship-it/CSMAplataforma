@@ -22,6 +22,7 @@ export function AdminScanner() {
   const [err, setErr] = useState('')
   const [last, setLast] = useState<{ name: string; at: string; status: string } | null>(null)
   const [warnDup, setWarnDup] = useState<string | null>(null)
+  const [savingAttendance, setSavingAttendance] = useState(false)
   const autoSessionStarted = useRef(false)
 
   const session = db.sessions.find((s) => s.id === sessionId)
@@ -86,14 +87,20 @@ export function AdminScanner() {
     setCard({ ...found, already_checked_in: !!first, first_entry_at: first?.recorded_at || null })
   }
 
-  const confirm = (force: boolean) => {
-    if (!card) return
-    const res = registerAttendance({ participantId: card.participant.id, sessionId, method: 'qr', force })
-    if (!res.ok) { setErr(res.error || 'No se pudo registrar.'); return }
-    setLast({ name: fullName(card.participant), at: new Date().toISOString(), status: 'presente' })
-    toast.push(`Asistencia registrada: ${fullName(card.participant)}`)
-    setCard(null)
-    setWarnDup(null)
+  const confirm = async (force: boolean) => {
+    if (!card || savingAttendance) return
+    setSavingAttendance(true)
+    setErr('')
+    try {
+      const res = await registerAttendance({ participantId: card.participant.id, sessionId, method: 'qr', force })
+      if (!res.ok) { setErr(res.error || 'No se pudo registrar.'); return }
+      setLast({ name: fullName(card.participant), at: new Date().toISOString(), status: 'presente' })
+      toast.push(`Asistencia guardada en la base de datos: ${fullName(card.participant)}`)
+      setCard(null)
+      setWarnDup(null)
+    } finally {
+      setSavingAttendance(false)
+    }
   }
 
   const searchManual = () => {
@@ -180,11 +187,11 @@ export function AdminScanner() {
                 </div>
               </div>
               <div className="row wrap" style={{ marginTop: 14 }}>
-                <button className="btn btn-primary" onClick={() => confirm(false)} disabled={!card.entry_allowed && !warnDup}>
-                  <Icon name="check" size={15} /> Confirmar ingreso
+                <button className="btn btn-primary" onClick={() => void confirm(false)} disabled={savingAttendance || (!card.entry_allowed && !warnDup)}>
+                  <Icon name="check" size={15} /> {savingAttendance ? 'Guardando…' : 'Confirmar ingreso'}
                 </button>
                 {warnDup && (
-                  <button className="btn" onClick={() => confirm(true)}>
+                  <button className="btn" onClick={() => void confirm(true)} disabled={savingAttendance}>
                     <Icon name="clock" size={15} /> Registrar de todos modos
                   </button>
                 )}
@@ -394,6 +401,11 @@ export function AdminAttendance() {
   const { db, saveAbsence } = useStore()
   const toast = useToast()
   const [sessionId, setSessionId] = useState(db.sessions[0]?.id || '')
+  const markAbsence = async (participantId: string, status: AttendanceStatus, note: string, success: string) => {
+    const result = await saveAbsence(sessionId, participantId, status, note)
+    if (!result.ok) toast.push(result.error || 'No se pudo guardar la asistencia.', 'err')
+    else toast.push(success)
+  }
   const session = db.sessions.find((s) => s.id === sessionId)
   const event = session ? db.events.find((e) => e.id === session.event_id) : null
   const rows = db.attendance.filter((a) => a.session_id === sessionId)
@@ -486,8 +498,8 @@ export function AdminAttendance() {
                     </td>
                     <td>
                       <div className="row" style={{ gap: 4 }}>
-                        <button className="btn btn-sm" onClick={() => { saveAbsence(sessionId, p.id, 'falta_justificada', 'Justificada por la directiva.'); toast.push('Falta justificada registrada.') }}>Justif.</button>
-                        <button className="btn btn-sm btn-danger" onClick={() => { saveAbsence(sessionId, p.id, 'falta_injustificada', 'No se presentó.'); toast.push('Falta injustificada registrada.') }}>Injustif.</button>
+                        <button className="btn btn-sm" onClick={() => void markAbsence(p.id, 'falta_justificada', 'Justificada por la directiva.', 'Falta justificada guardada.')}>Justif.</button>
+                        <button className="btn btn-sm btn-danger" onClick={() => void markAbsence(p.id, 'falta_injustificada', 'No se presentó.', 'Falta injustificada guardada.')}>Injustif.</button>
                       </div>
                     </td>
                   </tr>
@@ -507,6 +519,11 @@ export function AdminAbsences() {
   const { db, saveAbsence } = useStore()
   const toast = useToast()
   const [status, setStatus] = useState<'todas' | AttendanceStatus>('todas')
+  const justify = async (sessionId: string, participantId: string) => {
+    const result = await saveAbsence(sessionId, participantId, 'falta_justificada', 'Justificación aprobada por la directiva.')
+    if (!result.ok) toast.push(result.error || 'No se pudo guardar la justificación.', 'err')
+    else toast.push('Justificación guardada.')
+  }
   const [q, setQ] = useState('')
 
   const rows = db.attendance.filter((a) => {
@@ -595,7 +612,7 @@ export function AdminAbsences() {
                       <td className="tiny">{db.sessions.find((s) => s.id === a.session_id)?.name}<div className="tiny muted">{shortDate(a.recorded_at)}</div></td>
                       <td><Badge tone={statusTone(a.status)}>{attendanceStatusLabel[a.status]}</Badge></td>
                       <td>
-                        <button className="btn btn-sm" onClick={() => { saveAbsence(a.session_id, a.participant_id, 'falta_justificada', 'Justificación aprobada por la directiva.'); toast.push('Justificación aprobada.') }}>
+                        <button className="btn btn-sm" onClick={() => void justify(a.session_id, a.participant_id)}>
                           Justificar
                         </button>
                       </td>
