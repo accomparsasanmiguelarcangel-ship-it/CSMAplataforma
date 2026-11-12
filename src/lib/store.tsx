@@ -716,7 +716,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       if (nowMin > hh * 60 + mm) status = 'tardanza'
     }
     const record: Attendance = {
-      id: existing && a.force ? existing.id : uid('at'),
+      id: existing && a.force ? existing.id : crypto.randomUUID(),
       participant_id: a.participantId,
       session_id: a.sessionId,
       event_id: session.event_id,
@@ -730,7 +730,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       await cloud.attendance(record)
     } catch (e) {
-      return { ok: false, error: 'No se pudo guardar la asistencia en el servidor: ' + (e instanceof Error ? e.message : String(e)) }
+      return { ok: false, error: 'No se pudo guardar la asistencia en el servidor: ' + (e instanceof Error ? e.message : e && typeof e === 'object' ? JSON.stringify(e) : String(e)) }
     }
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
@@ -750,7 +750,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const prior = cur.attendance.findIndex((x) => x.participant_id === participantId && x.session_id === sessionId && x.entry_type === 'entrada')
     const existing = prior >= 0 ? cur.attendance[prior] : null
     const rec: Attendance = {
-      id: existing?.id || uid('at'),
+      id: existing?.id || crypto.randomUUID(),
       participant_id: participantId,
       session_id: sessionId,
       event_id: session.event_id,
