@@ -12,8 +12,7 @@ import type {
 const KEY = 'arcangel2004.db.v1'
 
 const nowISO = () => new Date().toISOString()
-const uid = (p = 'id') =>
-  `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+const uid = (_p = 'id') => crypto.randomUUID()
 const rand = () => {
   const a = new Uint8Array(16)
   crypto.getRandomValues(a)
@@ -477,23 +476,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const op = input.operation_number.trim()
     if (op.length < 4) return { ok: false, error: 'Ingresa el número de operación del comprobante.' }
 
-    const dup = cur.payments.find((p) => p.operation_number.replace(/\s/g, '') === op.replace(/\s/g, ''))
-    if (dup) {
-      return { ok: false, error: `El número de operación ${op} ya fue registrado (${dup.status === 'validado' ? 'pago aprobado' : 'en revisión'}). No se permiten operaciones duplicadas.` }
-    }
+    const dup = cur.payments.find((p) => p.operation_number.replace(/\\s/g, '') === op.replace(/\\s/g, ''))
+    if (dup) return { ok: false, error: `El número de operación ${op} ya fue registrado (${dup.status === 'validado' ? 'pago aprobado' : 'en revisión'}). No se permiten operaciones duplicadas.` }
+
     const mine = cur.payments.filter((p) => p.participant_id === participantId)
     const seq = mine.reduce((m, p) => Math.max(m, p.seq), 0) + 1
     const participant = cur.participants.find((p) => p.id === participantId)
     if (!participant) return { ok: false, error: 'Participante no encontrado.' }
     const reference = `${participant.code}_PAGO_${String(seq).padStart(2, '0')}.jpg`
+    let storagePath: string | null = null
+    let receiptUrl: string | null = input.receiptDataUrl
 
     if (supabase) {
       try {
         const blob = await (await fetch(input.receiptDataUrl)).blob()
-        const path = `participantes/${participant.code}/${reference}`
-        const up = await supabase.storage.from('private-files').upload(path, blob, { upsert: false, contentType: 'image/jpeg' })
-        if (!up.error) await supabase.functions.invoke('drive-sync', { body: { code: participant.code, kind: 'receipt', storagePath: path, seq } })
-      } catch { /* queda registrado para reintento */ }
+        storagePath = `participantes/${participant.code}/${reference}`
+        const up = await supabase.storage.from('private-files').upload(storagePath, blob, {
+          upsert: true, contentType: 'image/jpeg',
+        })
+        if (up.error) return { ok: false, error: 'No se pudo guardar el comprobante: ' + up.error.message }
+        const { data: signed, error: signedError } = await supabase.storage.from('private-files').createSignedUrl(storagePath, 3600)
+        if (signedError || !signed?.signedUrl) return { ok: false, error: 'El comprobante se guardó, pero no se pudo preparar su vista previa: ' + (signedError?.message || 'URL no disponible') }
+        receiptUrl = signed.signedUrl
+      } catch (e) {
+        return { ok: false, error: 'No se pudo guardar el comprobante: ' + (e instanceof Error ? e.message : String(e)) }
+      }
     }
 
     const payment: Payment = {
@@ -505,8 +512,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       method: 'Yape',
       concept: input.concept,
       paid_at: input.paid_at ? new Date(input.paid_at).toISOString() : nowISO(),
-      receipt_url: input.receiptDataUrl,
+      receipt_url: receiptUrl,
       receipt_drive_id: reference,
+      receipt_storage_path: storagePath,
       status: 'pendiente',
       notes: input.notes || null,
       reject_reason: null,
@@ -514,29 +522,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       reviewed_at: null,
     }
 
+    if (supabase) {
+      try {
+        await cloud.upsertPayment(payment)
+      } catch (e) {
+        if (storagePath) await supabase.storage.from('private-files').remove([storagePath])
+        return { ok: false, error: 'La imagen se guardó, pero el pago no pudo registrarse en la base de datos: ' + (e instanceof Error ? e.message : String(e)) }
+      }
+      // Drive es una copia de respaldo; el registro principal del comprobante queda en Storage y en pagos.
+      void supabase.functions.invoke('drive-sync', {
+        body: { code: participant.code, kind: 'receipt', storagePath, seq },
+      }).then(({ error }) => {
+        if (error) console.warn('No se pudo copiar el comprobante a Google Drive; permanece en Supabase Storage.', error.message)
+      })
+    }
+
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
       next.payments = [payment, ...next.payments]
       if (participant.profile_id) {
-        next.notifications = [
-          {
-            id: uid('nt'), profile_id: participant.profile_id, title: 'Comprobante enviado',
-            body: `Registramos tu comprobante ${reference} por S/ ${Number(input.amount).toFixed(2)}. Queda pendiente de validación por la directiva.`,
-            type: 'pago', read: false, created_at: nowISO(),
-          },
-          ...next.notifications,
-        ]
+        next.notifications = [{
+          id: uid('nt'), profile_id: participant.profile_id, title: 'Comprobante enviado',
+          body: `Registramos tu comprobante ${reference} por S/ ${Number(input.amount).toFixed(2)}. Queda pendiente de validación por la directiva.`,
+          type: 'pago', read: false, created_at: nowISO(),
+        }, ...next.notifications]
       }
-      next.audit = [
-        audit(prev, 'payment.submit', 'payments', payment.id, null, { amount: payment.amount, seq, op }),
-        ...next.audit,
-      ]
+      next.audit = [audit(prev, 'payment.submit', 'payments', payment.id, null, { amount: payment.amount, seq, op }), ...next.audit]
       return next
     })
-    cloud.upsertPayment(payment)
     return { ok: true, seq, reference }
   }, [])
-
   const reviewPayment = useCallback((paymentId: string, action: 'validado' | 'rechazado' | 'observado' | 'reenvio_solicitado', notes: string, amount?: number) => {
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
