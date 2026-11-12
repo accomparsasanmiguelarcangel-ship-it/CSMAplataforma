@@ -324,10 +324,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       const profile = profileRow as Profile
       const participantForUi = { ...participant, photo_url: photoUrl } as Participant
+      // El primer cloudLoad puede ejecutarse antes del inicio de sesión. Vuelve a hidratar
+      // todos los módulos cuando ya existe una sesión autenticada (admin y participante).
+      const remote = await cloudLoad()
       setDb((prev) => ({
         ...prev,
-        profiles: [profile, ...prev.profiles.filter((p) => p.id !== profile.id)],
-        participants: [participantForUi, ...prev.participants.filter((p) => p.id !== participant.id)],
+        ...(remote || {}),
+        profiles: [profile, ...(remote?.profiles || prev.profiles).filter((p) => p.id !== profile.id)],
+        participants: [participantForUi, ...(remote?.participants || prev.participants).filter((p) => p.id !== participant.id)],
+        session: prev.session,
       }))
       persistSession(profile.id)
       return { ok: true, warning: warnings.length ? warnings.join(' ') : undefined }
