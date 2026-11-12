@@ -34,6 +34,12 @@ export interface Participant {
   phone: string
   address: string
   group_name: string
+  participation_type?: 'Mujer' | 'Varón' | 'Músico' | 'Gala' | null
+  birth_date?: string | null
+  fee_amount?: number | null
+  fee_adjustment_reason?: string | null
+  fee_adjusted_by?: string | null
+  fee_adjusted_at?: string | null
   photo_url: string | null
   photo_drive_id: string | null
   qr_drive_id?: string | null
@@ -276,6 +282,8 @@ export interface RegistrationInput {
   password: string
   photoDataUrl: string
   extra: Record<string, string>
+  participation_type: 'Mujer' | 'Varón' | 'Músico' | 'Gala'
+  birth_date: string
 }
 
 export interface PaymentInput {
