@@ -913,10 +913,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const acc = participantId ? computeAccount(db, participantId) : null
     const paidOk = !!acc && acc.total_paid > 0
     const statusOk = !!p && ['inscrito', 'activo', 'observado'].includes(p.status)
-    const unlocked = statusOk && (!db.settings.docs_require_payment || paidOk)
+    const unlocked = statusOk && paidOk
     const visible = db.documents.filter((d) => d.published)
     if (unlocked) return { docs: visible, locked: false }
-    return { docs: visible.filter((d) => !d.requires_payment), locked: true }
+    return { docs: [], locked: true }
   }, [db])
 
   const stats = useMemo<DashboardStats>(() => {
