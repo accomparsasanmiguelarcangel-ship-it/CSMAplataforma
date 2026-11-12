@@ -164,6 +164,7 @@ export function Register() {
   const [scheduledAt, setScheduledAt] = useState<string | null>(null)
   const [form, setForm] = useState({
     first_names: '', last_names: '', dni: '', phone: '', address: '', group_name: GROUPS[0],
+    participation_type: 'Mujer' as 'Mujer' | 'Varón' | 'Músico' | 'Gala', birth_date: '',
     email: '', password: '', confirm: '', extra: {} as Record<string, string>,
   })
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }))
@@ -171,7 +172,7 @@ export function Register() {
   const step1Ok =
     form.first_names.trim().length >= 2 && form.last_names.trim().length >= 2 &&
     /^\d{8}$/.test(form.dni.trim()) && form.phone.replace(/\D/g, '').length >= 9 &&
-    form.address.trim().length >= 5 && form.email.includes('@') && form.password.length >= 6 &&
+    form.address.trim().length >= 5 && !!form.participation_type && !!form.birth_date && form.email.includes('@') && form.password.length >= 6 &&
     form.password === form.confirm
 
   const submit = async () => {
@@ -255,6 +256,14 @@ export function Register() {
                 </Field>
                 <Field label="Celular" required><input className="input" inputMode="tel" value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="987 654 321" /></Field>
                 <Field label="Dirección" required full><input className="input" value={form.address} onChange={(e) => set('address', e.target.value)} placeholder="Av. Los Ángeles 245, San Miguel" /></Field>
+                <Field label="Participación" required>
+                  <select className="select" value={form.participation_type} onChange={(e) => set('participation_type', e.target.value)}>
+                    <option value="Mujer">Mujer</option><option value="Varón">Varón</option><option value="Músico">Músico</option><option value="Gala">Gala</option>
+                  </select>
+                </Field>
+                <Field label="Fecha de nacimiento" required>
+                  <input className="input" type="date" value={form.birth_date} max={new Date().toISOString().slice(0, 10)} onChange={(e) => set('birth_date', e.target.value)} />
+                </Field>
                 <Field label="Grupo / delegación / categoría" required full>
                   <select className="select" value={form.group_name} onChange={(e) => set('group_name', e.target.value)}>
                     {GROUPS.map((g) => <option key={g}>{g}</option>)}
