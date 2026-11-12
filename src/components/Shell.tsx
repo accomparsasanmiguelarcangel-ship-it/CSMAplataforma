@@ -14,6 +14,7 @@ export default function Shell() {
   const loc = useLocation()
   const { canInstall, install } = useInstallPrompt()
   const [notifOpen, setNotifOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const role = user?.profile.role || 'participante'
 
   const myNotifs = db.notifications.filter((n) => n.profile_id === user?.profile.id)
@@ -149,6 +150,10 @@ export default function Shell() {
               {m.label}
             </button>
           ))}
+          <button className={clsx(mobileMenuOpen && 'active')} onClick={() => setMobileMenuOpen(true)} aria-label="Abrir menú completo">
+            <Icon name="menu" size={19} />
+            Menú
+          </button>
         </nav>
       </div>
 
@@ -169,6 +174,20 @@ export default function Shell() {
               </div>
               {!n.read && <span className="notice-dot" />}
             </div>
+          ))}
+        </div>
+      </Modal>
+
+      <Modal open={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} title="Menú completo">
+        <div className="mobile-menu-grid">
+          {items.map((it) => (
+            <NavLink key={it.to} to={it.to} end={it.to === '/admin' || it.to === '/app'}
+              className={({ isActive }) => clsx('mobile-menu-item', isActive && 'active')}
+              onClick={() => setMobileMenuOpen(false)}>
+              <Icon name={it.icon} size={18} />
+              <span>{it.label}</span>
+              {!!it.badge && <span className="count">{it.badge}</span>}
+            </NavLink>
           ))}
         </div>
       </Modal>

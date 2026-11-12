@@ -410,7 +410,7 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; font-si
   display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 60;
   background: rgba(255, 255, 255, 0.96); backdrop-filter: blur(16px);
   border-top: 1px solid var(--line); padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
-  grid-template-columns: repeat(5, 1fr); gap: 2px;
+  grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px;
 }
 .mobile-nav button {
   display: flex; flex-direction: column; align-items: center; gap: 3px; border: 0; background: transparent;
@@ -418,6 +418,15 @@ table.table { width: 100%; border-collapse: separate; border-spacing: 0; font-si
 }
 .mobile-nav button.active { color: var(--green-mid); background: var(--green-soft); }
 .mobile-nav button .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--orange); }
+
+.mobile-menu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.mobile-menu-item {
+  display: flex; align-items: center; gap: 9px; min-width: 0; padding: 12px 10px;
+  border: 1px solid var(--line); border-radius: 11px; color: var(--ink);
+  background: var(--paper); text-decoration: none; font-size: 0.78rem; font-weight: 700;
+}
+.mobile-menu-item.active { background: var(--green-soft); border-color: #cfe3c9; color: var(--green-mid); }
+.mobile-menu-item span:nth-child(2) { flex: 1; }
 
 /* ── Tabs ───────────────────────────────────────────────────── */
 .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); overflow-x: auto; }

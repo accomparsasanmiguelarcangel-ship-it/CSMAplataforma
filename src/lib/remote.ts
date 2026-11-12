@@ -107,12 +107,34 @@ export const cloud = {
       operation_number: p.operation_number, method: p.method, concept: p.concept, paid_at: p.paid_at,
       receipt_drive_id: p.receipt_drive_id, receipt_storage_path: p.receipt_storage_path || null,
       status: p.status, notes: p.notes, reject_reason: p.reject_reason,
+      reviewed_at: p.reviewed_at, reviewed_by: p.reviewed_by || null,
     })
     if (error) throw error
   },
-  async review(paymentId: string, action: string, newStatus: string, notes: string) {
+  async review(payment: Payment, review: DBShape['paymentReviews'][number], reviewerId: string | null) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('payment_reviews').insert({ payment_id: paymentId, action, new_status: newStatus, notes }))
+    const { data, error } = await supabase.from('payments').update({
+      status: payment.status,
+      amount: payment.amount,
+      notes: payment.notes,
+      reject_reason: payment.reject_reason,
+      reviewed_at: payment.reviewed_at,
+      reviewed_by: reviewerId,
+    }).eq('id', payment.id).select('id').maybeSingle()
+    if (error) throw error
+    if (!data) throw new Error('No se actualizó el pago. Verifica que tu cuenta tenga permisos de administrador.')
+    const { error: reviewError } = await supabase.from('payment_reviews').insert({
+      id: review.id,
+      payment_id: review.payment_id,
+      action: review.action,
+      previous_status: review.previous_status,
+      new_status: review.new_status,
+      amount: review.amount,
+      reviewer_id: reviewerId,
+      reviewer_email: review.reviewer_email,
+      notes: review.notes,
+    })
+    if (reviewError) throw reviewError
   },
   async attendance(a: Attendance) {
     if (!can() || !supabase) return
@@ -127,7 +149,11 @@ export const cloud = {
   },
   async upsertSession(s: SessionItem) {
     if (!can() || !supabase) return
-    await safe(() => supabase!.from('event_sessions').upsert(s))
+    const { error } = await supabase.from('event_sessions').upsert({
+      id: s.id, event_id: s.event_id, name: s.name, session_date: s.session_date,
+      start_time: s.start_time, end_time: s.end_time, late_after: s.late_after,
+    })
+    if (error) throw error
   },
   async upsertDocument(d: DocumentItem) {
     if (!can() || !supabase) return
