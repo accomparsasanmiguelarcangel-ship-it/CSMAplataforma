@@ -162,7 +162,7 @@ async function listDriveFiles(token: string, parentId: string): Promise<Array<Re
   let pageToken = ''
   do {
     const url = new URL('https://www.googleapis.com/drive/v3/files')
-    url.searchParams.set('q', `'${parentId}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'`)
+    url.searchParams.set('q', `'${parentId}' in parents and trashed = false`)
     url.searchParams.set('pageSize', '1000')
     url.searchParams.set('orderBy', 'name')
     url.searchParams.set('fields', 'nextPageToken,files(id,name,mimeType,size,modifiedTime,webViewLink,description)')
@@ -179,7 +179,10 @@ async function listDriveFiles(token: string, parentId: string): Promise<Array<Re
     files.push(...(payload.files || []))
     pageToken = payload.nextPageToken || ''
   } while (pageToken)
-  return files
+  const folders = files.filter((file) => file.mimeType === 'application/vnd.google-apps.folder')
+  const directFiles = files.filter((file) => file.mimeType !== 'application/vnd.google-apps.folder')
+  const nestedFiles = await Promise.all(folders.map((folder) => listDriveFiles(token, String(folder.id))))
+  return [...directFiles, ...nestedFiles.flat()]
 }
 
 
