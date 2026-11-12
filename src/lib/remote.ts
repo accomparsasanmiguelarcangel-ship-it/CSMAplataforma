@@ -175,12 +175,15 @@ export const cloud = {
     await safe(() => supabase!.from('documents').upsert(d))
   },
   async upsertAnnouncement(a: Announcement) {
-    if (!can() || !supabase) return
-    await safe(() => supabase!.from('announcements').upsert(a))
+    if (!can() || !supabase) throw new Error('No hay conexión activa con la base de datos.')
+    const { data, error } = await supabase.from('announcements').upsert(a, { onConflict: 'id' }).select('*').single()
+    if (error) throw error
+    if (!data) throw new Error('Supabase no confirmó la publicación del comunicado.')
+    return data as Announcement
   },
   async settings(s: Settings) {
-    if (!can() || !supabase) return
-    const { data, error } = await supabase.from('settings').upsert({ id: 'global', ...s }).select('*').single()
+    if (!can() || !supabase) throw new Error('No hay conexión activa con la base de datos.')
+    const { data, error } = await supabase.from('settings').upsert({ ...s, id: 'global' }, { onConflict: 'id' }).select('*').single()
     if (error) throw error
     if (!data) throw new Error('Supabase no confirmó el guardado de la configuración.')
     return data as Settings
