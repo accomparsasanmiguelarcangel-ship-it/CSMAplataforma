@@ -126,8 +126,9 @@ export function PHome() {
           <div className="divider" />
           <div className="quota-grid">
             {Array.from({ length: Math.max(1, db.settings.installments) }).map((_, i) => {
-              const quotaAmount = i === 0 ? db.settings.advance_amount
-                : Math.round((db.settings.total_amount - db.settings.advance_amount) / Math.max(1, db.settings.installments - 1))
+              const participantAdvance = Math.min(db.settings.advance_amount, acc.total_amount)
+              const quotaAmount = i === 0 ? participantAdvance
+                : Math.round((acc.total_amount - participantAdvance) / Math.max(1, db.settings.installments - 1))
               const done = (pays.filter((x) => x.status === 'validado').length) > i
               return (
                 <div key={i} style={{
@@ -236,6 +237,8 @@ export function PProfile() {
             <dt>Correo</dt><dd style={{ wordBreak: 'break-all' }}>{user?.profile.email}</dd>
             <dt>Dirección</dt><dd>{p.address}</dd>
             <dt>Grupo / delegación</dt><dd>{p.group_name}</dd>
+            <dt>Participación</dt><dd>{p.participation_type || '—'}</dd>
+            <dt>Fecha de nacimiento</dt><dd>{p.birth_date ? shortDate(p.birth_date) : '—'}</dd>
             <dt>Fecha de inscripción</dt><dd>{dateTime(p.created_at)}</dd>
             {db.formFields.map((f) => p.extra?.[f.key] ? (
               <div key={f.id} style={{ display: 'contents' }}>
