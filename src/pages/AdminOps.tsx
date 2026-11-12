@@ -51,12 +51,10 @@ export function AdminScanner() {
     }).format(new Date(value))
     const startTime = localTime(scheduledEvent.starts_at)
     const endTime = localTime(scheduledEvent.ends_at)
-    const [hour, minute] = startTime.split(':').map(Number)
-    const lateMinutes = Math.min(23 * 60 + 59, hour * 60 + minute + 15)
-    const lateAfter = `${String(Math.floor(lateMinutes / 60)).padStart(2, '0')}:${String(lateMinutes % 60).padStart(2, '0')}`
     const generated: SessionItem = {
       id: crypto.randomUUID(), event_id: scheduledEvent.id, name: 'Jornada general',
-      session_date: today, start_time: startTime, end_time: endTime, late_after: lateAfter,
+      session_date: today, start_time: startTime, end_time: endTime,
+      late_after: scheduledEvent.late_after || '09:15',
     }
     let active = true
     void saveSession(generated).then((result) => {
