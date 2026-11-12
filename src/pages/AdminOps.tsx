@@ -682,89 +682,20 @@ export function AdminDocuments() {
 
       <Modal open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar documento' : 'Nuevo documento'} wide
         footer={<><button className="btn" onClick={() => setEdit(null)}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => {
-            if (!edit) return
-            if (!edit.title.trim()) { toast.push('El título es obligatorio.', 'err'); return }
-            saveDocument({ ...edit, id: edit.id || `doc-${Date.now()}` })
-            toast.push('Documento guardado.')
-            setEdit(null)
-          }}>Guardar</button></>}>
-        {edit && (
-          <div className="form-grid">
-            <Field label="Título" required full><input className="input" value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} /></Field>
-            <Field label="Categoría">
-              <select className="select" value={edit.category} onChange={(e) => setEdit({ ...edit, category: e.target.value })}>
-                {cats.map((c) => <option key={c}>{c}</option>)}
-              </select>
-            </Field>
-            <Field label="Estado de publicación">
-              <select className="select" value={edit.published ? '1' : '0'} onChange={(e) => setEdit({ ...edit, published: e.target.value === '1' })}>
-                <option value="1">Publicado</option><option value="0">Borrador</option>
-              </select>
-            </Field>
-            <Field label="Descripción" full><textarea className="textarea" value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
-            <Field label="Carpeta / ID en Google Drive" hint="Ej. 03_DOCUMENTACION/REGLAMENTOS/reglamento-2026.pdf">
-              <input className="input" value={edit.drive_file_id || ''} onChange={(e) => setEdit({ ...edit, drive_file_id: e.target.value })} />
-            </Field>
-            <Field label="Tamaño (referencial)"><input className="input" value={edit.size_label || ''} onChange={(e) => setEdit({ ...edit, size_label: e.target.value })} placeholder="410 KB" /></Field>
-            <Field label="Requiere pago confirmado">
-              <select className="select" value={edit.requires_payment ? '1' : '0'} onChange={(e) => setEdit({ ...edit, requires_payment: e.target.value === '1' })}>
-                <option value="1">Sí, requiere pago validado</option>
-                <option value="0">No, acceso libre al estar inscrito</option>
-              </select>
-            </Field>
-          </div>
-        )}
-      </Modal>
-    </div>
-  )
-}
-
-/* ══════════════════════ COMUNICADOS ══════════════════════════════════════ */
-export function AdminAnnouncements() {
-  const { db, saveAnnouncement, deleteAnnouncement } = useStore()
-  const toast = useToast()
-  const [edit, setEdit] = useState<{ id: string; title: string; body: string; pinned: boolean; audience: 'todos' | 'participantes' | 'administracion' } | null>(null)
-
-  return (
-    <div className="page">
-      <div className="page-head">
-        <div><h1>Comunicados</h1><p className="lead">Avisos que verán los participantes en su panel.</p></div>
-        <div className="spacer" />
-        <button className="btn btn-primary" onClick={() => setEdit({ id: '', title: '', body: '', pinned: false, audience: 'todos' })}>
-          <Icon name="plus" size={15} /> Nuevo comunicado
-        </button>
-      </div>
-      <div className="stack">
-        {db.announcements.map((a) => (
-          <section key={a.id} className="card">
-            <div className="row">
-              <h2 style={{ fontSize: '1rem' }}>{a.title}</h2>
-              {a.pinned && <Badge tone="warn">Fijado</Badge>}
-              <Badge tone="neutral">{a.audience}</Badge>
-              <div className="spacer" />
-              <span className="tiny muted">{dateTime(a.published_at)}</span>
-              <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => setEdit({ ...a })}><Icon name="edit" size={14} /></button>
-              <button className="icon-btn" style={{ width: 30, height: 30 }} onClick={() => deleteAnnouncement(a.id)}><Icon name="trash" size={14} /></button>
-            </div>
-            <p className="tiny" style={{ marginTop: 8 }}>{a.body}</p>
-          </section>
-        ))}
-      </div>
-
-      <Modal open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? 'Editar comunicado' : 'Nuevo comunicado'} wide
-        footer={<><button className="btn" onClick={() => setEdit(null)}>Cancelar</button>
-          <button className="btn btn-primary" onClick={() => {
-            if (!edit) return
+          <button className="btn btn-primary" disabled={savingAnnouncement} onClick={async () => {
+            if (!edit || savingAnnouncement) return
             if (!edit.title.trim() || !edit.body.trim()) { toast.push('Título y contenido son obligatorios.', 'err'); return }
-            saveAnnouncement({
+            setSavingAnnouncement(true)
+            const result = await saveAnnouncement({
               ...edit,
-              id: edit.id || `an-${Date.now()}`,
+              id: edit.id || crypto.randomUUID(),
               published_at: new Date().toISOString(),
             })
-            toast.push('Comunicado publicado.')
+            setSavingAnnouncement(false)
+            if (!result.ok) { toast.push('No se pudo guardar el comunicado: ' + (result.error || 'Error desconocido.'), 'err'); return }
+            toast.push('Comunicado guardado en la base de datos.')
             setEdit(null)
-          }}>Publicar</button></>}>
+          }}>{savingAnnouncement ? 'Guardando…' : 'Publicar'}</button></>}>
         {edit && (
           <div className="form-grid">
             <Field label="Título" required full><input className="input" value={edit.title} onChange={(e) => setEdit({ ...edit, title: e.target.value })} /></Field>
