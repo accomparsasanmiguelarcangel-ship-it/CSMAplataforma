@@ -182,6 +182,27 @@ async function listDriveFiles(token: string, parentId: string): Promise<Array<Re
   return files
 }
 
+
+async function documentAccess(userId: string): Promise<{ allowed: boolean; unlocked: boolean }> {
+  const { data: profile, error: profileError } = await admin.from('profiles')
+    .select('role, active').eq('id', userId).maybeSingle()
+  if (profileError || !profile?.active) return { allowed: false, unlocked: false }
+  if (profile.role === 'superadmin' || profile.role === 'admin') return { allowed: true, unlocked: true }
+  if (profile.role !== 'participante') return { allowed: false, unlocked: false }
+  const { data: participant, error: participantError } = await admin.from('participants')
+    .select('id, status').eq('profile_id', userId).maybeSingle()
+  if (participantError || !participant || !['inscrito', 'activo', 'observado'].includes(participant.status)) {
+    return { allowed: false, unlocked: false }
+  }
+  const [{ data: settings }, { data: payments, error: paymentError }] = await Promise.all([
+    admin.from('settings').select('docs_require_payment').eq('id', 'global').maybeSingle(),
+    admin.from('payments').select('amount').eq('participant_id', participant.id).eq('status', 'validado'),
+  ])
+  if (paymentError) throw paymentError
+  const paid = (payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+  return { allowed: true, unlocked: settings?.docs_require_payment === false || paid > 0 }
+}
+
 /* ── Handler ────────────────────────────────────────────────────────────── */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -195,7 +216,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const kind = body.kind as 'selfie' | 'qr' | 'receipt' | 'document' | 'report'
+    const kind = body.kind as 'selfie' | 'qr' | 'receipt' | 'document' | 'report' | 'list_documents' | 'download_document'
     const cache: FolderMap = body.folderCache || {}
 
     // Los medios solo pueden sincronizarse por su dueño autenticado o por directiva.
@@ -219,56 +240,55 @@ Deno.serve(async (req) => {
     const token = await getAccessToken()
     const tree = await ensureStructure(token, cache)
 
-    if (kind === 'list_documents') {
-      const { data: profile, error: profileError } = await admin.from('profiles')
-        .select('role, active').eq('id', userRes.user.id).maybeSingle()
-      if (profileError || !profile?.active) {
-        return new Response(JSON.stringify({ error: 'Perfil no autorizado.' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } })
-      }
-      let unlocked = profile.role === 'superadmin' || profile.role === 'admin'
-      if (!unlocked) {
-        if (profile.role !== 'participante') {
-          return new Response(JSON.stringify({ error: 'Este rol no tiene acceso a la biblioteca.' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } })
-        }
-        const { data: participant, error: participantError } = await admin.from('participants')
-          .select('id,status').eq('profile_id', userRes.user.id).maybeSingle()
-        if (participantError || !participant || !['inscrito', 'activo', 'observado'].includes(participant.status)) {
-          return new Response(JSON.stringify({ error: 'Tu inscripción aún no habilita la documentación.' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } })
-        }
-        const [{ data: settings }, { data: payments, error: paymentError }] = await Promise.all([
-          admin.from('settings').select('docs_require_payment').eq('id', 'global').maybeSingle(),
-          admin.from('payments').select('amount').eq('participant_id', participant.id).eq('status', 'validado'),
-        ])
-        if (paymentError) throw paymentError
-        const paid = (payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
-        unlocked = settings?.docs_require_payment === false || paid > 0
+    if (kind === 'list_documents' || kind === 'download_document') {
+      const access = await documentAccess(userRes.user.id)
+      if (!access.allowed) {
+        return new Response(JSON.stringify({ error: 'Tu cuenta no tiene acceso a la biblioteca institucional.' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } })
       }
       const categories = [
         { key: 'DOC_ESTATUTOS', label: 'Estatutos', free: true },
         { key: 'DOC_REGLAMENTOS', label: 'Reglamentos', free: false },
         { key: 'DOC_COMUNICADOS', label: 'Comunicados', free: false },
         { key: 'DOC_CRONOGRAMAS', label: 'Cronogramas', free: false },
-      ]
-      const documents = (await Promise.all(categories.filter((category) => unlocked || category.free).map(async (category) => {
-        const files = await listDriveFiles(token, tree[category.key])
-        return files.map((file) => ({
-          id: `drive-${file.id}`,
-          title: String(file.name || 'Documento'),
-          category: category.label,
-          description: String(file.description || ''),
-          file_url: String(file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`),
-          drive_file_id: String(file.id),
-          requires_payment: !category.free,
-          published: true,
-          published_at: String(file.modifiedTime || new Date().toISOString()),
-          size_label: file.size ? `${(Number(file.size) / 1024).toFixed(0)} KB` : 'Google Drive',
-        }))
-      }))).flat()
-      return new Response(JSON.stringify({ ok: true, documents }), {
-        headers: { ...cors, 'Content-Type': 'application/json' },
+      ].filter((category) => access.unlocked || category.free)
+      if (kind === 'list_documents') {
+        const documents = (await Promise.all(categories.map(async (category) => {
+          const files = await listDriveFiles(token, tree[category.key])
+          return files.map((file) => ({
+            id: `drive-${file.id}`,
+            title: String(file.name || 'Documento'),
+            category: category.label,
+            description: String(file.description || ''),
+            file_url: null,
+            drive_file_id: String(file.id),
+            requires_payment: !category.free,
+            published: true,
+            published_at: String(file.modifiedTime || new Date().toISOString()),
+            size_label: file.size ? `${(Number(file.size) / 1024).toFixed(0)} KB` : 'Google Drive',
+          }))
+        }))).flat()
+        return new Response(JSON.stringify({ ok: true, documents }), {
+          headers: { ...cors, 'Content-Type': 'application/json' },
+        })
+      }
+      const fileId = String(body.fileId || '')
+      if (!fileId) return new Response(JSON.stringify({ error: 'Falta el identificador del documento.' }), { status: 400, headers: cors })
+      const filesByCategory = await Promise.all(categories.map((category) => listDriveFiles(token, tree[category.key])))
+      const file = filesByCategory.flat().find((item) => item.id === fileId)
+      if (!file) return new Response(JSON.stringify({ error: 'El documento no existe o no tienes permiso para abrirlo.' }), { status: 404, headers: cors })
+      const download = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`, {
+        headers: { Authorization: `Bearer ${token}` },
       })
+      if (!download.ok) {
+        const details = await download.json().catch(() => ({}))
+        throw new Error(`Google Drive: ${details.error?.message || download.statusText}`)
+      }
+      const headers = new Headers(cors)
+      headers.set('Content-Type', download.headers.get('Content-Type') || 'application/octet-stream')
+      headers.set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(String(file.name || 'documento'))}`)
+      headers.set('Cache-Control', 'private, no-store')
+      return new Response(download.body, { headers })
     }
-
     // Carpetas de eventos del año en curso
     const year = new Date().getFullYear()
     await ensureFolder(token, `EVENTO_${year}`, tree['02_EVENTOS'], cache)
