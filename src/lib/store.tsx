@@ -39,7 +39,8 @@ function save(db: DBShape) {
 
 export function computeAccount(db: DBShape, participantId: string): Account {
   const conf = db.settings
-  const total = Number(conf.total_amount || 0)
+  const participant = db.participants.find((p) => p.id === participantId)
+  const total = Number(participant?.fee_amount ?? conf.total_amount ?? 0)
   const pays = db.payments.filter((p) => p.participant_id === participantId)
   const paid = pays.filter((p) => p.status === 'validado').reduce((s, p) => s + Number(p.amount), 0)
   const pending = pays.filter((p) => p.status === 'pendiente').reduce((s, p) => s + Number(p.amount), 0)
@@ -102,7 +103,7 @@ interface StoreCtx {
   submitPayment: (participantId: string, input: PaymentInput) => Promise<{ ok: boolean; error?: string; seq?: number; reference?: string }>
   reviewPayment: (paymentId: string, action: 'validado' | 'rechazado' | 'observado' | 'reenvio_solicitado', notes: string, amount?: number) => Promise<{ ok: boolean; error?: string }>
   setEnrollmentStatus: (participantId: string, status: Participant['status'], notes?: string) => void
-  updateParticipant: (participantId: string, patch: Partial<Participant>) => void
+  updateParticipant: (participantId: string, patch: Partial<Participant>) => Promise<{ ok: boolean; error?: string }>
   lookupByToken: (token: string) => LookupCard | null
   registerAttendance: (a: {
     participantId: string; sessionId: string; status?: AttendanceStatus;
@@ -121,7 +122,7 @@ interface StoreCtx {
   deleteField: (id: string) => void
   saveProfile: (p: Profile) => void
   deleteProfile: (id: string) => void
-  updateSettings: (patch: Partial<Settings>) => void
+  updateSettings: (patch: Partial<Settings>) => Promise<{ ok: boolean; error?: string }>
   markNotificationRead: (id: string) => void
   markAllRead: () => void
   documentsFor: (participantId: string | null) => { docs: DocumentItem[]; locked: boolean }
@@ -385,6 +386,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             phone: input.phone.trim(),
             address: input.address.trim(),
             group_name: input.group_name.trim(),
+            participation_type: input.participation_type,
+            birth_date: input.birth_date,
             extra: input.extra || {},
           },
         },
@@ -429,6 +432,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       phone: input.phone.trim(),
       address: input.address.trim(),
       group_name: input.group_name.trim(),
+      participation_type: input.participation_type,
+      birth_date: input.birth_date,
+      fee_amount: null,
+      fee_adjustment_reason: null,
       photo_url: photo,
       photo_drive_id: `${code}_SELFIE.jpg`,
       status: 'pendiente',
@@ -653,7 +660,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     })
   }, [sessionProfileId])
 
-  const updateParticipant = useCallback((participantId: string, patch: Partial<Participant>) => {
+  const updateParticipant = useCallback(async (participantId: string, patch: Partial<Participant>) => {
+    const current = dbRef.current.participants.find((x) => x.id === participantId)
+    if (!current) return { ok: false, error: 'No se encontró al participante.' }
+    try {
+      await cloud.updateParticipant(participantId, patch)
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
       const p = next.participants.find((x) => x.id === participantId)
@@ -663,6 +677,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       next.audit = [audit(prev, 'participant.update', 'participants', participantId, { before }, patch as Record<string, unknown>), ...next.audit]
       return next
     })
+    return { ok: true }
   }, [sessionProfileId])
 
   /* ── Asistencia ────────────────────────────────────────────────── */
@@ -920,15 +935,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     cloud.remove('profiles', id)
   }, [])
 
-  const updateSettings = useCallback((patch: Partial<Settings>) => {
-    setDb((prev) => {
-      const next: DBShape = JSON.parse(JSON.stringify(prev))
-      const before = { ...next.settings }
-      next.settings = { ...next.settings, ...patch }
-      next.audit = [audit(prev, 'settings.update', 'settings', 'global', before as unknown as Record<string, unknown>, patch as Record<string, unknown>), ...next.audit]
-      return next
-    })
-    cloud.settings({ ...dbRef.current.settings, ...patch })
+  const updateSettings = useCallback(async (patch: Partial<Settings>) => {
+    const before = { ...dbRef.current.settings }
+    const nextSettings = { ...before, ...patch }
+    try {
+      await cloud.settings(nextSettings)
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) }
+    }
+    setDb((prev) => ({
+      ...prev,
+      settings: nextSettings,
+      audit: [audit(prev, 'settings.update', 'settings', 'global', before as unknown as Record<string, unknown>, patch as Record<string, unknown>), ...prev.audit],
+    }))
+    return { ok: true }
   }, [sessionProfileId])
 
   const markNotificationRead = useCallback((id: string) => {
