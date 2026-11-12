@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { supabase } from '../lib/supabase'
 import {
-  Avatar, Badge, Banner, Empty, Icon, Modal, Progress, SectionCard, Stat, Tabs,
+  Avatar, Badge, Banner, Empty, Icon, Modal, Progress, SectionCard, Stat, Tabs, useToast,
 } from '../components/ui'
 import {
   accountStatusLabel, attendanceStatusLabel, dateTime, enrollmentStatusLabel, fullName, money,
@@ -16,6 +16,7 @@ import { useQr } from './Participant'
 /* ── DASHBOARD ──────────────────────────────────────────────────────────── */
 export function AdminDashboard() {
   const { stats, db, account, reviewPayment } = useStore()
+  const toast = useToast()
   const pend = db.payments.filter((p) => p.status === 'pendiente')
   const pendingParticipants = db.participants.filter((p) => p.status === 'pendiente')
   const lastEvent = [...db.events].sort((a, b) => +new Date(b.starts_at) - +new Date(a.starts_at))[0]
@@ -79,7 +80,10 @@ export function AdminDashboard() {
                         <td className="num">{money(p.amount)}</td>
                         <td className="tiny">{shortDate(p.created_at)}</td>
                         <td>
-                          <button className="btn btn-sm btn-primary" onClick={() => reviewPayment(p.id, 'validado', 'Validado desde el dashboard.')}>
+                          <button className="btn btn-sm btn-primary" onClick={async () => {
+                            const result = await reviewPayment(p.id, 'validado', 'Validado desde el dashboard.')
+                            toast.push(result.ok ? 'Pago validado y guardado.' : result.error || 'No se pudo validar el pago.', result.ok ? 'ok' : 'err')
+                          }}>
                             Aprobar
                           </button>
                         </td>
@@ -700,6 +704,8 @@ export function AdminPayments() {
 /* ── VALIDACIÓN DE COMPROBANTES ─────────────────────────────────────────── */
 export function AdminValidation() {
   const { db, account, reviewPayment, reviewsOf } = useStore()
+  const toast = useToast()
+  const [saving, setSaving] = useState(false)
   const [sel, setSel] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
   const [note, setNote] = useState('')
@@ -715,6 +721,23 @@ export function AdminValidation() {
     const p = db.payments.find((x) => x.id === id)
     setAmount(p ? String(p.amount) : '')
     setNote('')
+  }
+
+  const applyReview = async (action: 'validado' | 'rechazado' | 'reenvio_solicitado') => {
+    if (!current || saving) return
+    setSaving(true)
+    const result = await reviewPayment(
+      current.id, action,
+      note || (action === 'validado' ? 'Comprobante conforme.' : action === 'rechazado' ? 'Comprobante rechazado.' : 'Se solicita un nuevo comprobante.'),
+      action === 'validado' ? Number(amount) : undefined,
+    )
+    setSaving(false)
+    if (!result.ok) {
+      toast.push(result.error || 'No se pudo guardar la revisión.', 'err')
+      return
+    }
+    toast.push(action === 'validado' ? 'Pago validado correctamente.' : action === 'rechazado' ? 'Pago rechazado.' : 'Se solicitó un nuevo comprobante.')
+    setSel(null)
   }
 
   if (!current) {
@@ -803,13 +826,13 @@ export function AdminValidation() {
                   <textarea className="textarea" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Ej. El monto no coincide con la cuota." />
                 </div>
                 <div className="row wrap" style={{ marginTop: 12 }}>
-                  <button className="btn btn-primary" onClick={() => { reviewPayment(current.id, 'validado', note || 'Comprobante conforme.', Number(amount)); setSel(null) }}>
-                    <Icon name="check" size={15} /> Aprobar pago
+                  <button className="btn btn-primary" onClick={() => void applyReview('validado')} disabled={saving}>
+                    <Icon name="check" size={15} /> {saving ? 'Guardando…' : 'Aprobar pago'}
                   </button>
-                  <button className="btn btn-danger" onClick={() => { reviewPayment(current.id, 'rechazado', note || 'Comprobante rechazado.'); setSel(null) }}>
+                  <button className="btn btn-danger" onClick={() => void applyReview('rechazado')} disabled={saving}>
                     <Icon name="x" size={15} /> Rechazar
                   </button>
-                  <button className="btn" onClick={() => { reviewPayment(current.id, 'reenvio_solicitado', note || 'Se solicita un nuevo comprobante.'); setSel(null) }}>
+                  <button className="btn" onClick={() => void applyReview('reenvio_solicitado')} disabled={saving}>
                     <Icon name="upload" size={15} /> Solicitar nuevo
                   </button>
                 </div>
