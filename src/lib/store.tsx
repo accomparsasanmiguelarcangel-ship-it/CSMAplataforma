@@ -939,7 +939,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       absences: db.attendance.filter((a) => a.status === 'falta_injustificada').length,
       docs_enabled: db.participants.filter((p) => {
         const acc = computeAccount(db, p.id)
-        return ['inscrito', 'activo', 'observado'].includes(p.status) && (!db.settings.docs_require_payment || acc.total_paid > 0)
+        return ['inscrito', 'activo', 'observado'].includes(p.status) && acc.total_paid > 0
       }).length,
     }
   }, [db])
