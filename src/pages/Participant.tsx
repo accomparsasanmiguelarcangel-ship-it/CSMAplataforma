@@ -7,7 +7,7 @@ import {
   shortDate, statusTone, timeOnly, fullName,
 } from '../lib/utils'
 import { qrDataUrl } from '../lib/qr'
-import type { AttendanceStatus, DocumentItem, Payment } from '../lib/types'
+import type { Announcement, AttendanceStatus, DocumentItem, Payment } from '../lib/types'
 import { edgeCall, supabase } from '../lib/supabase'
 
 /* ── Hook: QR como data URL ─────────────────────────────────────────────── */
@@ -81,7 +81,32 @@ export function PHome() {
   const docs = documentsFor(p.id)
   const nextEvent = [...db.events].filter((e) => new Date(e.starts_at) >= new Date()).sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))[0]
   const myNotifs = db.notifications.filter((n) => n.profile_id === user?.profile.id && !n.read)
-  const announcements = [...db.announcements].sort((a, b) => Number(b.pinned) - Number(a.pinned) || +new Date(b.published_at) - +new Date(a.published_at))
+  const [visibleAnnouncements, setVisibleAnnouncements] = useState<Announcement[]>(db.announcements)
+  useEffect(() => {
+    if (!p || !supabase) {
+      setVisibleAnnouncements(db.announcements)
+      return
+    }
+    let active = true
+    const loadAnnouncements = async () => {
+      const { data, error } = await supabase!
+        .from('announcements')
+        .select('*')
+        .in('audience', ['todos', 'participantes'])
+        .order('pinned', { ascending: false })
+        .order('published_at', { ascending: false })
+      if (active && !error && data) setVisibleAnnouncements(data as Announcement[])
+    }
+    void loadAnnouncements()
+    const channel = supabase.channel('participant-announcements-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, () => { void loadAnnouncements() })
+      .subscribe()
+    return () => {
+      active = false
+      void supabase!.removeChannel(channel)
+    }
+  }, [p?.id])
+  const announcements = [...visibleAnnouncements].sort((a, b) => Number(b.pinned) - Number(a.pinned) || +new Date(b.published_at) - +new Date(a.published_at))
   const featuredAnnouncement = announcements[0]
   const pendingPay = pays.find((x) => x.status === 'pendiente')
   const pct = acc.total_amount ? Math.round((acc.total_paid / acc.total_amount) * 100) : 0
@@ -111,22 +136,24 @@ export function PHome() {
       {pendingPay && <Banner tone="info" title="Comprobante en revisión">Tu comprobante de {money(pendingPay.amount)} está pendiente de validación.</Banner>}
 
       {featuredAnnouncement && (
-        <section className="card" style={{ marginBottom: 16, border: '2px solid var(--orange, #d97706)', background: 'linear-gradient(110deg, var(--paper) 0%, var(--orange-soft, #fff7ed) 100%)', boxShadow: '0 8px 24px rgba(180, 83, 9, .12)' }}>
-          <div className="row wrap" style={{ alignItems: 'center', gap: 10, marginBottom: 8 }}>
-            <div style={{ width: 42, height: 42, borderRadius: 12, display: 'grid', placeItems: 'center', background: '#f59e0b', color: '#fff', flexShrink: 0 }}>
-              <Icon name="megaphone" size={22} />
+        <section role="status" aria-label="Comunicado reciente" style={{ margin: '0 0 20px', padding: 18, borderRadius: 16, border: '2px solid #ea580c', background: 'linear-gradient(120deg, #fff7ed 0%, #ffedd5 100%)', color: '#431407', boxShadow: '0 10px 28px rgba(194, 65, 12, .18)' }}>
+          <div className="row wrap" style={{ alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, display: 'grid', placeItems: 'center', background: '#c2410c', color: '#fff', flexShrink: 0 }}>
+              <Icon name="megaphone" size={25} />
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 900, letterSpacing: '.07em', textTransform: 'uppercase', color: '#b45309' }}>
-                {featuredAnnouncement.pinned ? 'Comunicado importante · Fijado' : 'Comunicado de la directiva'}
+              <div style={{ fontSize: '0.78rem', fontWeight: 950, letterSpacing: '.08em', textTransform: 'uppercase', color: '#9a3412' }}>
+                {featuredAnnouncement.pinned ? '📌 Comunicado importante · Fijado' : '¡Atención! Comunicado de la directiva'}
               </div>
-              <h2 style={{ fontSize: '1.05rem', margin: '2px 0 0' }}>{featuredAnnouncement.title}</h2>
+              <h2 style={{ fontSize: '1.2rem', lineHeight: 1.3, margin: '3px 0 0', color: '#431407' }}>{featuredAnnouncement.title}</h2>
             </div>
-            <Badge tone="warn">{announcements.length} {announcements.length === 1 ? 'aviso' : 'avisos'}</Badge>
+            <span style={{ borderRadius: 999, background: '#c2410c', color: '#fff', padding: '5px 10px', fontSize: '.72rem', fontWeight: 900 }}>
+              {announcements.length} {announcements.length === 1 ? 'COMUNICADO' : 'COMUNICADOS'}
+            </span>
           </div>
-          <p style={{ fontSize: '0.86rem', lineHeight: 1.65, margin: '8px 0 14px', whiteSpace: 'pre-wrap' }}>{featuredAnnouncement.body}</p>
-          <Link to="/app/comunicados" className="btn btn-primary btn-sm">
-            <Icon name="megaphone" size={14} /> Ver todos los comunicados <Icon name="arrow-right" size={14} />
+          <p style={{ fontSize: '.92rem', lineHeight: 1.7, margin: '10px 0 16px', whiteSpace: 'pre-wrap', color: '#7c2d12' }}>{featuredAnnouncement.body}</p>
+          <Link to="/app/comunicados" className="btn btn-primary" style={{ background: '#9a3412', borderColor: '#9a3412', color: '#fff', fontWeight: 900 }}>
+            <Icon name="megaphone" size={15} /> LEER COMUNICADO <Icon name="arrow-right" size={15} />
           </Link>
         </section>
       )}
