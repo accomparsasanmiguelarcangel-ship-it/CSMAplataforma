@@ -581,8 +581,7 @@ export function AdminDocuments() {
       </div>
 
       <Banner tone="info" title="Regla de acceso vigente">
-        El participante accede cuando está inscrito o activo {db.settings.docs_require_payment ? 'y tiene al menos un pago validado' : '(sin requisito de pago)'}.
-        Los documentos marcados como “libres” son visibles incluso sin pago confirmado.
+        Solo los participantes inscritos o activos que tengan al menos un pago validado pueden acceder a la documentación. Esta condición se aplica a todos los documentos, sin excepciones.
       </Banner>
       <div style={{ height: 14 }} />
 
