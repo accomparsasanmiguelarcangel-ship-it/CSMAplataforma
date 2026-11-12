@@ -108,9 +108,9 @@ interface StoreCtx {
     method?: 'qr' | 'manual'; entryType?: 'entrada' | 'salida'; notes?: string; force?: boolean
   }) => { ok: boolean; error?: string; firstEntryAt?: string; card?: LookupCard }
   saveAbsence: (sessionId: string, participantId: string, status: AttendanceStatus, notes: string) => { ok: boolean; error?: string }
-  saveEvent: (e: EventItem) => void
+  saveEvent: (e: EventItem) => Promise<void>
   deleteEvent: (id: string) => void
-  saveSession: (s: SessionItem) => void
+  saveSession: (s: SessionItem) => Promise<void>
   deleteSession: (id: string) => void
   saveDocument: (d: DocumentItem) => void
   deleteDocument: (id: string) => void
@@ -764,7 +764,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [sessionProfileId])
 
   /* ── Catálogos ─────────────────────────────────────────────────── */
-  const saveEvent = useCallback((e: EventItem) => {
+  const saveEvent = useCallback(async (e: EventItem) => {
+    await cloud.upsertEvent(e)
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
       const i = next.events.findIndex((x) => x.id === e.id)
@@ -774,7 +775,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       next.audit = [audit(prev, isNew ? 'event.create' : 'event.update', 'events', e.id, null, e as unknown as Record<string, unknown>), ...next.audit]
       return next
     })
-    cloud.upsertEvent(e)
   }, [sessionProfileId])
 
   const deleteEvent = useCallback((id: string) => {
@@ -788,7 +788,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     cloud.remove('events', id)
   }, [sessionProfileId])
 
-  const saveSession = useCallback((s: SessionItem) => {
+  const saveSession = useCallback(async (s: SessionItem) => {
+    await cloud.upsertSession(s)
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
       const i = next.sessions.findIndex((x) => x.id === s.id)
@@ -797,7 +798,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       next.audit = [audit(prev, 'session.save', 'event_sessions', s.id, null, s as unknown as Record<string, unknown>), ...next.audit]
       return next
     })
-    cloud.upsertSession(s)
   }, [sessionProfileId])
 
   const deleteSession = useCallback((id: string) => {
