@@ -709,6 +709,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         firstEntryAt: existing.recorded_at,
       }
     }
+    const event = cur.events.find((e) => e.id === session.event_id)
+    const nowAt = new Date()
+    if (event?.starts_at && nowAt < new Date(event.starts_at)) {
+      return { ok: false, error: `El evento todavía no inicia. Inicio programado: ${new Date(event.starts_at).toLocaleString('es-PE', { timeZone: 'America/Lima' })}.` }
+    }
+    if (event?.ends_at && nowAt > new Date(event.ends_at)) {
+      return { ok: false, error: 'El evento ya finalizó. No se permiten nuevos ingresos.' }
+    }
     let status: AttendanceStatus = a.status || 'presente'
     if (!a.status && entryType === 'entrada') {
       const limaParts = new Intl.DateTimeFormat('en-GB', {
@@ -716,7 +724,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }).formatToParts(new Date())
       const part = (type: string) => Number(limaParts.find((x) => x.type === type)?.value || 0)
       const nowMin = part('hour') * 60 + part('minute')
-      const event = cur.events.find((e) => e.id === session.event_id)
       const [deadlineHour, deadlineMinute] = (event?.entry_until || '23:59').slice(0, 5).split(':').map(Number)
       if (nowMin > deadlineHour * 60 + deadlineMinute) {
         return { ok: false, error: `El límite de ingreso para este evento fue a las ${event?.entry_until || '23:59'}.` }
