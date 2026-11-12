@@ -942,12 +942,7 @@ export function AdminSettings() {
             <Field label="Adelanto obligatorio (S/)"><input className="input" type="number" value={s.advance_amount} onChange={(e) => setS({ ...s, advance_amount: Number(e.target.value) })} /></Field>
             <Field label="Número de cuotas"><input className="input" type="number" value={s.installments} onChange={(e) => setS({ ...s, installments: Number(e.target.value) })} /></Field>
             <Field label="Primer vencimiento"><input className="input" type="date" value={s.first_due_date} onChange={(e) => setS({ ...s, first_due_date: e.target.value })} /></Field>
-            <Field label="Documentos requieren pago confirmado" full>
-              <select className="select" value={s.docs_require_payment ? '1' : '0'} onChange={(e) => setS({ ...s, docs_require_payment: e.target.value === '1' })}>
-                <option value="1">Sí — inscrito + al menos un pago validado</option>
-                <option value="0">No — basta con estar inscrito</option>
-              </select>
-            </Field>
+            
           </div>
         </SectionCard>
 
