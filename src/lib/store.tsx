@@ -65,7 +65,7 @@ export function computeAccount(db: DBShape, participantId: string): Account {
 
   let status: Account['status'] = 'sin_pagos'
   const rejected = pays.some((p) => p.status === 'rechazado')
-  if (total > 0 && paid >= total) status = 'completo'
+  if (total <= 0 || paid >= total) status = 'completo'
   else if (paid > 0 && paid < expected) status = 'deuda'
   else if (paid > 0 && paid >= expected) status = paid >= total ? 'completo' : 'al_dia'
   else if (pending > 0) status = 'pendiente_validacion'
