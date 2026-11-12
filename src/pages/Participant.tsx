@@ -81,6 +81,8 @@ export function PHome() {
   const docs = documentsFor(p.id)
   const nextEvent = [...db.events].filter((e) => new Date(e.starts_at) >= new Date()).sort((a, b) => +new Date(a.starts_at) - +new Date(b.starts_at))[0]
   const myNotifs = db.notifications.filter((n) => n.profile_id === user?.profile.id && !n.read)
+  const announcements = [...db.announcements].sort((a, b) => Number(b.pinned) - Number(a.pinned) || +new Date(b.published_at) - +new Date(a.published_at))
+  const featuredAnnouncement = announcements[0]
   const pendingPay = pays.find((x) => x.status === 'pendiente')
   const pct = acc.total_amount ? Math.round((acc.total_paid / acc.total_amount) * 100) : 0
 
@@ -107,6 +109,27 @@ export function PHome() {
       )}
       {p.status === 'rechazado' && <Banner tone="bad" title="Inscripción rechazada">{p.notes || 'Acércate a la directiva para más información.'}</Banner>}
       {pendingPay && <Banner tone="info" title="Comprobante en revisión">Tu comprobante de {money(pendingPay.amount)} está pendiente de validación.</Banner>}
+
+      {featuredAnnouncement && (
+        <section className="card" style={{ marginBottom: 16, border: '2px solid var(--orange, #d97706)', background: 'linear-gradient(110deg, var(--paper) 0%, var(--orange-soft, #fff7ed) 100%)', boxShadow: '0 8px 24px rgba(180, 83, 9, .12)' }}>
+          <div className="row wrap" style={{ alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, display: 'grid', placeItems: 'center', background: '#f59e0b', color: '#fff', flexShrink: 0 }}>
+              <Icon name="megaphone" size={22} />
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 900, letterSpacing: '.07em', textTransform: 'uppercase', color: '#b45309' }}>
+                {featuredAnnouncement.pinned ? 'Comunicado importante · Fijado' : 'Comunicado de la directiva'}
+              </div>
+              <h2 style={{ fontSize: '1.05rem', margin: '2px 0 0' }}>{featuredAnnouncement.title}</h2>
+            </div>
+            <Badge tone="warn">{announcements.length} {announcements.length === 1 ? 'aviso' : 'avisos'}</Badge>
+          </div>
+          <p style={{ fontSize: '0.86rem', lineHeight: 1.65, margin: '8px 0 14px', whiteSpace: 'pre-wrap' }}>{featuredAnnouncement.body}</p>
+          <Link to="/app/comunicados" className="btn btn-primary btn-sm">
+            <Icon name="megaphone" size={14} /> Ver todos los comunicados <Icon name="arrow-right" size={14} />
+          </Link>
+        </section>
+      )}
 
       <div className="grid g4" style={{ marginBottom: 14 }}>
         <Stat label="Costo total" value={money(acc.total_amount)} icon="card" tone="i" />
