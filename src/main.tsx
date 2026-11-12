@@ -4,21 +4,28 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import './styles.css'
 
+const isGitHubPages = window.location.pathname.startsWith('/CSMAplataforma')
+const routerBase = isGitHubPages ? '/CSMAplataforma' : '/'
+
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
-    <BrowserRouter basename="/CSMAplataforma">
+    <BrowserRouter basename={routerBase}>
       <App />
     </BrowserRouter>
   </React.StrictMode>,
 )
 
-// PWA: registro del service worker (solo en producción)
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
+// The service worker is only for the hosted website, not the native Android app.
+if (
+  'serviceWorker' in navigator &&
+  import.meta.env.PROD &&
+  window.location.hostname !== 'localhost'
+) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`, {
-     scope: import.meta.env.BASE_URL,
+      scope: import.meta.env.BASE_URL,
     }).catch(() => {
-      /* el SW es opcional: la app funciona igual sin conexión parcial */
+      /* The service worker is optional; the app works without it. */
     })
   })
 }

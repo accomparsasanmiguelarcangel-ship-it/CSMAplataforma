@@ -1,0 +1,97 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/android-capacitor
+
+permissions:
+  contents: read
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Install Capacitor for this build
+        run: npm install --no-save --package-lock=false @capacitor/core@8.6.0 @capacitor/cli@8.6.0 @capacitor/android@8.6.0
+
+      - name: Build web app for Android
+        env:
+          VITE_SUPABASE_URL: https://wtwvytwsnffdhijmnosv.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_4PbFWBA5vMzjDBA-FtFBDw_pByUQhiy
+        run: npm run build -- --mode android
+
+      - name: Generate Android project
+        run: npx cap add android
+
+      - name: Install image tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y imagemagick
+
+      - name: Generate Android app icon from comparsa logo
+        run: |
+          mkdir -p assets
+          # Capacitor Assets detects assets/icon.png. Keep the full logo centered
+          # on a square transparent canvas so it is not cropped.
+          convert public/img/logo.png -resize 768x768 -gravity center -background none -extent 1024x1024 assets/icon.png
+          npx --yes @capacitor/assets@3.0.5 generate --android
+
+      - name: Sync Capacitor assets
+        run: npx cap sync android
+
+      - name: Enable camera permission
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          content = manifest.read_text()
+          permission = '    <uses-permission android:name="android.permission.CAMERA" />'
+          if "android.permission.CAMERA" not in content:
+              content = content.replace("<application", permission + "\n    <application", 1)
+          manifest.write_text(content)
+          PY
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Configure Android SDK
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "No se encontró sdkmanager dentro de $SDK_ROOT"
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses
+          "$SDKMANAGER" --install "platform-tools"
+
+      - name: Build test APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: comparsa-san-miguel-arcangel-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14

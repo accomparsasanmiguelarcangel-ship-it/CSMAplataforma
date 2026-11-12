@@ -77,6 +77,7 @@ export interface Payment {
   paid_at: string
   receipt_url: string | null
   receipt_drive_id: string | null
+  receipt_storage_path?: string | null
   status: PaymentStatus
   notes: string | null
   reject_reason: string | null

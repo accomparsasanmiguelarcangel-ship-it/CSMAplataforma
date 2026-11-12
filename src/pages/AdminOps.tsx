@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import {
@@ -9,6 +9,7 @@ import {
   attendanceStatusLabel, dateTime, fullName, money, shortDate, statusTone, timeOnly, todayISO, roleLabel,
 } from '../lib/utils'
 import { parseQr } from '../lib/qr'
+import { edgeCall } from '../lib/supabase'
 import { exportExcel, exportPdf } from '../lib/export'
 import type { AttendanceStatus, DocumentItem, EventItem, FormField, LookupCard, Profile, SessionItem } from '../lib/types'
 
@@ -23,6 +24,16 @@ export function AdminScanner() {
   const [last, setLast] = useState<{ name: string; at: string; status: string } | null>(null)
   const [warnDup, setWarnDup] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (db.sessions.some((s) => s.id === sessionId)) return
+    const today = todayISO()
+    const preferred = [...db.sessions]
+      .filter((s) => s.session_date >= today)
+      .sort((a, b) => a.session_date.localeCompare(b.session_date) || a.start_time.localeCompare(b.start_time))[0]
+      || [...db.sessions].sort((a, b) => b.session_date.localeCompare(a.session_date) || b.start_time.localeCompare(a.start_time))[0]
+    setSessionId(preferred?.id || '')
+  }, [db.sessions, sessionId])
+
   const session = db.sessions.find((s) => s.id === sessionId)
   const event = session ? db.events.find((e) => e.id === session.event_id) : null
 
@@ -30,6 +41,10 @@ export function AdminScanner() {
   const suggestedSessions = todaySessions.length ? todaySessions : db.sessions
 
   const onDetected = (raw: string) => {
+    if (!sessionId || !session) {
+      setErr('Primero programa una jornada en Eventos y jornadas y selecciónala aquí.')
+      return
+    }
     const token = parseQr(raw)
     if (!token) { setErr('El código escaneado no pertenece a esta asociación.'); return }
     const found = lookupByToken(token)
@@ -92,7 +107,11 @@ export function AdminScanner() {
 
       <div className="grid g2" style={{ alignItems: 'start' }}>
         <SectionCard title="Escáner QR" sub="Cámara trasera del dispositivo">
-          <QrScanner onDetected={onDetected} onError={(m) => setErr(m)} />
+          {session ? <QrScanner onDetected={onDetected} onError={(m) => setErr(m)} /> : (
+            <Banner tone="warn" title="No hay jornadas programadas">
+              Para registrar asistencia, crea primero un evento y al menos una jornada desde <Link to="/admin/eventos">Eventos y jornadas</Link>. Cuando exista una jornada, aparecerá aquí para seleccionarla.
+            </Banner>
+          )}
           <div className="divider" />
           <div className="field">
             <label>Registro manual (participante sin QR)</label>
@@ -197,20 +216,28 @@ export function AdminEvents() {
   const openNew = () => setEdit(emptyEvent())
   const openEdit = (e: EventItem) => setEdit({ ...e })
 
-  const persist = () => {
+  const persist = async () => {
     if (!edit) return
     if (!edit.name.trim()) { toast.push('El nombre del evento es obligatorio.', 'err'); return }
-    saveEvent({ ...edit, id: edit.id || `ev-${Date.now()}`, starts_at: new Date(edit.starts_at).toISOString(), ends_at: new Date(edit.ends_at).toISOString() })
-    toast.push('Evento guardado.')
-    setEdit(null)
+    try {
+      await saveEvent({ ...edit, id: edit.id || crypto.randomUUID(), starts_at: new Date(edit.starts_at).toISOString(), ends_at: new Date(edit.ends_at).toISOString() })
+      toast.push('Evento guardado y sincronizado.')
+      setEdit(null)
+    } catch (error) {
+      toast.push('No se pudo guardar el evento: ' + (error instanceof Error ? error.message : String(error)), 'err')
+    }
   }
 
-  const persistSession = () => {
+  const persistSession = async () => {
     if (!sess) return
     if (!sess.name.trim() || !sess.event_id) { toast.push('Completa los datos de la jornada.', 'err'); return }
-    saveSession({ ...sess, id: sess.id || `se-${Date.now()}` })
-    toast.push('Jornada guardada.')
-    setSess(null)
+    try {
+      await saveSession({ ...sess, id: sess.id || crypto.randomUUID() })
+      toast.push('Jornada guardada y sincronizada.')
+      setSess(null)
+    } catch (error) {
+      toast.push('No se pudo guardar la jornada: ' + (error instanceof Error ? error.message : String(error)), 'err')
+    }
   }
 
   return (
@@ -565,6 +592,21 @@ export function AdminDocuments() {
   const { db, saveDocument, deleteDocument } = useStore()
   const toast = useToast()
   const [edit, setEdit] = useState<DocumentItem | null>(null)
+  const [syncing, setSyncing] = useState(false)
+  const syncDrive = async () => {
+    if (syncing) return
+    setSyncing(true)
+    try {
+      const result = await edgeCall<{ ok: boolean; count: number; documents: DocumentItem[] }>('drive-documents', { action: 'sync' })
+      result.documents.forEach((doc) => saveDocument(doc))
+      toast.push(`Drive sincronizado: ${result.count} documento(s).`)
+    } catch (error) {
+      toast.push(error instanceof Error ? error.message : 'No se pudo sincronizar Google Drive.', 'err')
+    } finally {
+      setSyncing(false)
+    }
+  }
+  useEffect(() => { void syncDrive() }, [])
   const cats = ['Estatutos', 'Reglamentos internos', 'Reglamentos de participación', 'Normas de convivencia', 'Comunicados', 'Cronogramas', 'Programaciones', 'Actas y acuerdos', 'Otros documentos']
 
   const newDoc = (): DocumentItem => ({
@@ -577,12 +619,12 @@ export function AdminDocuments() {
       <div className="page-head">
         <div><h1>Documentación institucional</h1><p className="lead">Biblioteca privada con control de acceso por estado de pago.</p></div>
         <div className="spacer" />
+        <button className="btn" disabled={syncing} onClick={() => void syncDrive()}><Icon name="refresh-cw" size={15} /> {syncing ? 'Sincronizando…' : 'Actualizar desde Drive'}</button>
         <button className="btn btn-primary" onClick={() => setEdit(newDoc())}><Icon name="plus" size={15} /> Nuevo documento</button>
       </div>
 
       <Banner tone="info" title="Regla de acceso vigente">
-        El participante accede cuando está inscrito o activo {db.settings.docs_require_payment ? 'y tiene al menos un pago validado' : '(sin requisito de pago)'}.
-        Los documentos marcados como “libres” son visibles incluso sin pago confirmado.
+        Solo los participantes inscritos o activos que tengan al menos un pago validado pueden acceder a la documentación. Esta condición se aplica a todos los documentos, sin excepciones.
       </Banner>
       <div style={{ height: 14 }} />
 
@@ -943,12 +985,7 @@ export function AdminSettings() {
             <Field label="Adelanto obligatorio (S/)"><input className="input" type="number" value={s.advance_amount} onChange={(e) => setS({ ...s, advance_amount: Number(e.target.value) })} /></Field>
             <Field label="Número de cuotas"><input className="input" type="number" value={s.installments} onChange={(e) => setS({ ...s, installments: Number(e.target.value) })} /></Field>
             <Field label="Primer vencimiento"><input className="input" type="date" value={s.first_due_date} onChange={(e) => setS({ ...s, first_due_date: e.target.value })} /></Field>
-            <Field label="Documentos requieren pago confirmado" full>
-              <select className="select" value={s.docs_require_payment ? '1' : '0'} onChange={(e) => setS({ ...s, docs_require_payment: e.target.value === '1' })}>
-                <option value="1">Sí — inscrito + al menos un pago validado</option>
-                <option value="0">No — basta con estar inscrito</option>
-              </select>
-            </Field>
+            
           </div>
         </SectionCard>
 

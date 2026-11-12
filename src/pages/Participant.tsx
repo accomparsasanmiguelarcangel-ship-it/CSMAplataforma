@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useStore } from '../lib/store'
+import { supabase } from '../lib/supabase'
 import { Avatar, Badge, Banner, Empty, Icon, Modal, Progress, SectionCard, Stat } from '../components/ui'
 import {
   accountStatusLabel, attendanceStatusLabel, dateTime, dayMonth, enrollmentStatusLabel, money,
@@ -693,6 +694,37 @@ export function PDocuments() {
   const p = user?.participant
   const { docs, locked } = documentsFor(p?.id || null)
   const cats = Array.from(new Set(docs.map((d) => d.category)))
+  const openDocument = async (fileId: string, title: string) => {
+    if (!supabase) return
+    try {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData.session?.access_token
+      if (!token) throw new Error('Tu sesión ha vencido. Ingresa nuevamente.')
+      const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/drive-documents`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          apikey: import.meta.env.VITE_SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ action: 'download', fileId }),
+      })
+      if (!response.ok) {
+        const detail = await response.json().catch(() => ({}))
+        throw new Error(detail.error || 'No se pudo abrir el documento.')
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.target = '_blank'
+      a.rel = 'noopener'
+      a.click()
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000)
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'No se pudo abrir el documento.')
+    }
+  }
   return (
     <div className="page">
       <div className="page-head"><div><h1>Documentación institucional</h1><p className="lead">Biblioteca privada de la asociación.</p></div></div>
@@ -717,7 +749,7 @@ export function PDocuments() {
                     <div className="tiny muted">{d.description} · {d.size_label} · {shortDate(d.published_at)}</div>
                   </div>
                   <button className="btn btn-sm" disabled={!d.file_url && !d.drive_file_id}
-                    onClick={() => d.file_url && window.open(d.file_url, '_blank')}>
+                    onClick={() => d.drive_file_id ? void openDocument(d.drive_file_id, d.title) : d.file_url && window.open(d.file_url, '_blank')}>
                     <Icon name="download" size={13} /> Abrir
                   </button>
                 </div>

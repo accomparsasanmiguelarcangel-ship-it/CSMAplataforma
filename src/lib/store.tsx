@@ -12,8 +12,7 @@ import type {
 const KEY = 'arcangel2004.db.v1'
 
 const nowISO = () => new Date().toISOString()
-const uid = (p = 'id') =>
-  `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+const uid = (_p = 'id') => crypto.randomUUID()
 const rand = () => {
   const a = new Uint8Array(16)
   crypto.getRandomValues(a)
@@ -109,9 +108,9 @@ interface StoreCtx {
     method?: 'qr' | 'manual'; entryType?: 'entrada' | 'salida'; notes?: string; force?: boolean
   }) => { ok: boolean; error?: string; firstEntryAt?: string; card?: LookupCard }
   saveAbsence: (sessionId: string, participantId: string, status: AttendanceStatus, notes: string) => { ok: boolean; error?: string }
-  saveEvent: (e: EventItem) => void
+  saveEvent: (e: EventItem) => Promise<void>
   deleteEvent: (id: string) => void
-  saveSession: (s: SessionItem) => void
+  saveSession: (s: SessionItem) => Promise<void>
   deleteSession: (id: string) => void
   saveDocument: (d: DocumentItem) => void
   deleteDocument: (id: string) => void
@@ -325,10 +324,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
       const profile = profileRow as Profile
       const participantForUi = { ...participant, photo_url: photoUrl } as Participant
+      // El primer cloudLoad puede ejecutarse antes del inicio de sesión. Vuelve a hidratar
+      // todos los módulos cuando ya existe una sesión autenticada (admin y participante).
+      const remote = await cloudLoad()
       setDb((prev) => ({
         ...prev,
-        profiles: [profile, ...prev.profiles.filter((p) => p.id !== profile.id)],
-        participants: [participantForUi, ...prev.participants.filter((p) => p.id !== participant.id)],
+        ...(remote || {}),
+        profiles: [profile, ...(remote?.profiles || prev.profiles).filter((p) => p.id !== profile.id)],
+        participants: [participantForUi, ...(remote?.participants || prev.participants).filter((p) => p.id !== participant.id)],
+        session: prev.session,
       }))
       persistSession(profile.id)
       return { ok: true, warning: warnings.length ? warnings.join(' ') : undefined }
@@ -477,23 +481,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const op = input.operation_number.trim()
     if (op.length < 4) return { ok: false, error: 'Ingresa el número de operación del comprobante.' }
 
-    const dup = cur.payments.find((p) => p.operation_number.replace(/\s/g, '') === op.replace(/\s/g, ''))
-    if (dup) {
-      return { ok: false, error: `El número de operación ${op} ya fue registrado (${dup.status === 'validado' ? 'pago aprobado' : 'en revisión'}). No se permiten operaciones duplicadas.` }
-    }
+    const dup = cur.payments.find((p) => p.operation_number.replace(/\\s/g, '') === op.replace(/\\s/g, ''))
+    if (dup) return { ok: false, error: `El número de operación ${op} ya fue registrado (${dup.status === 'validado' ? 'pago aprobado' : 'en revisión'}). No se permiten operaciones duplicadas.` }
+
     const mine = cur.payments.filter((p) => p.participant_id === participantId)
     const seq = mine.reduce((m, p) => Math.max(m, p.seq), 0) + 1
     const participant = cur.participants.find((p) => p.id === participantId)
     if (!participant) return { ok: false, error: 'Participante no encontrado.' }
     const reference = `${participant.code}_PAGO_${String(seq).padStart(2, '0')}.jpg`
+    let storagePath: string | null = null
+    let receiptUrl: string | null = input.receiptDataUrl
 
     if (supabase) {
       try {
         const blob = await (await fetch(input.receiptDataUrl)).blob()
-        const path = `participantes/${participant.code}/${reference}`
-        const up = await supabase.storage.from('private-files').upload(path, blob, { upsert: false, contentType: 'image/jpeg' })
-        if (!up.error) await supabase.functions.invoke('drive-sync', { body: { code: participant.code, kind: 'receipt', storagePath: path, seq } })
-      } catch { /* queda registrado para reintento */ }
+        storagePath = `participantes/${participant.code}/${reference}`
+        const up = await supabase.storage.from('private-files').upload(storagePath, blob, {
+          upsert: true, contentType: 'image/jpeg',
+        })
+        if (up.error) return { ok: false, error: 'No se pudo guardar el comprobante: ' + up.error.message }
+        const { data: signed, error: signedError } = await supabase.storage.from('private-files').createSignedUrl(storagePath, 3600)
+        if (signedError || !signed?.signedUrl) return { ok: false, error: 'El comprobante se guardó, pero no se pudo preparar su vista previa: ' + (signedError?.message || 'URL no disponible') }
+        receiptUrl = signed.signedUrl
+      } catch (e) {
+        return { ok: false, error: 'No se pudo guardar el comprobante: ' + (e instanceof Error ? e.message : String(e)) }
+      }
     }
 
     const payment: Payment = {
@@ -505,8 +517,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       method: 'Yape',
       concept: input.concept,
       paid_at: input.paid_at ? new Date(input.paid_at).toISOString() : nowISO(),
-      receipt_url: input.receiptDataUrl,
+      receipt_url: receiptUrl,
       receipt_drive_id: reference,
+      receipt_storage_path: storagePath,
       status: 'pendiente',
       notes: input.notes || null,
       reject_reason: null,
@@ -514,29 +527,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       reviewed_at: null,
     }
 
+    if (supabase) {
+      try {
+        await cloud.upsertPayment(payment)
+      } catch (e) {
+        if (storagePath) await supabase.storage.from('private-files').remove([storagePath])
+        return { ok: false, error: 'La imagen se guardó, pero el pago no pudo registrarse en la base de datos: ' + (e instanceof Error ? e.message : String(e)) }
+      }
+      // Drive es una copia de respaldo; el registro principal del comprobante queda en Storage y en pagos.
+      void supabase.functions.invoke('drive-sync', {
+        body: { code: participant.code, kind: 'receipt', storagePath, seq },
+      }).then(({ error }) => {
+        if (error) console.warn('No se pudo copiar el comprobante a Google Drive; permanece en Supabase Storage.', error.message)
+      })
+    }
+
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
       next.payments = [payment, ...next.payments]
       if (participant.profile_id) {
-        next.notifications = [
-          {
-            id: uid('nt'), profile_id: participant.profile_id, title: 'Comprobante enviado',
-            body: `Registramos tu comprobante ${reference} por S/ ${Number(input.amount).toFixed(2)}. Queda pendiente de validación por la directiva.`,
-            type: 'pago', read: false, created_at: nowISO(),
-          },
-          ...next.notifications,
-        ]
+        next.notifications = [{
+          id: uid('nt'), profile_id: participant.profile_id, title: 'Comprobante enviado',
+          body: `Registramos tu comprobante ${reference} por S/ ${Number(input.amount).toFixed(2)}. Queda pendiente de validación por la directiva.`,
+          type: 'pago', read: false, created_at: nowISO(),
+        }, ...next.notifications]
       }
-      next.audit = [
-        audit(prev, 'payment.submit', 'payments', payment.id, null, { amount: payment.amount, seq, op }),
-        ...next.audit,
-      ]
+      next.audit = [audit(prev, 'payment.submit', 'payments', payment.id, null, { amount: payment.amount, seq, op }), ...next.audit]
       return next
     })
-    cloud.upsertPayment(payment)
     return { ok: true, seq, reference }
   }, [])
-
   const reviewPayment = useCallback((paymentId: string, action: 'validado' | 'rechazado' | 'observado' | 'reenvio_solicitado', notes: string, amount?: number) => {
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
@@ -749,7 +769,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   }, [sessionProfileId])
 
   /* ── Catálogos ─────────────────────────────────────────────────── */
-  const saveEvent = useCallback((e: EventItem) => {
+  const saveEvent = useCallback(async (e: EventItem) => {
+    await cloud.upsertEvent(e)
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
       const i = next.events.findIndex((x) => x.id === e.id)
@@ -759,7 +780,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       next.audit = [audit(prev, isNew ? 'event.create' : 'event.update', 'events', e.id, null, e as unknown as Record<string, unknown>), ...next.audit]
       return next
     })
-    cloud.upsertEvent(e)
   }, [sessionProfileId])
 
   const deleteEvent = useCallback((id: string) => {
@@ -773,7 +793,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     cloud.remove('events', id)
   }, [sessionProfileId])
 
-  const saveSession = useCallback((s: SessionItem) => {
+  const saveSession = useCallback(async (s: SessionItem) => {
+    await cloud.upsertSession(s)
     setDb((prev) => {
       const next: DBShape = JSON.parse(JSON.stringify(prev))
       const i = next.sessions.findIndex((x) => x.id === s.id)
@@ -782,7 +803,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       next.audit = [audit(prev, 'session.save', 'event_sessions', s.id, null, s as unknown as Record<string, unknown>), ...next.audit]
       return next
     })
-    cloud.upsertSession(s)
   }, [sessionProfileId])
 
   const deleteSession = useCallback((id: string) => {
@@ -913,10 +933,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     const acc = participantId ? computeAccount(db, participantId) : null
     const paidOk = !!acc && acc.total_paid > 0
     const statusOk = !!p && ['inscrito', 'activo', 'observado'].includes(p.status)
-    const unlocked = statusOk && (!db.settings.docs_require_payment || paidOk)
+    const unlocked = statusOk && paidOk
     const visible = db.documents.filter((d) => d.published)
     if (unlocked) return { docs: visible, locked: false }
-    return { docs: visible.filter((d) => !d.requires_payment), locked: true }
+    return { docs: [], locked: true }
   }, [db])
 
   const stats = useMemo<DashboardStats>(() => {
@@ -939,7 +959,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       absences: db.attendance.filter((a) => a.status === 'falta_injustificada').length,
       docs_enabled: db.participants.filter((p) => {
         const acc = computeAccount(db, p.id)
-        return ['inscrito', 'activo', 'observado'].includes(p.status) && (!db.settings.docs_require_payment || acc.total_paid > 0)
+        return ['inscrito', 'activo', 'observado'].includes(p.status) && acc.total_paid > 0
       }).length,
     }
   }, [db])
