@@ -48,7 +48,7 @@ jobs:
           content = manifest.read_text()
           permission = '    <uses-permission android:name="android.permission.CAMERA" />'
           if "android.permission.CAMERA" not in content:
-              content = content.replace("<application", permission + "\\n    <application", 1)
+              content = content.replace("<application", permission + "\n    <application", 1)
           manifest.write_text(content)
           PY
 
