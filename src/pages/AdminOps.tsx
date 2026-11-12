@@ -14,7 +14,7 @@ import type { AttendanceStatus, DocumentItem, EventItem, FormField, LookupCard, 
 
 /* ══════════════════════ ESCÁNER QR / CONTROL DE ASISTENCIA ═══════════════ */
 export function AdminScanner() {
-  const { db, lookupByToken, registerAttendance, account } = useStore()
+  const { db, ready, lookupByToken, registerAttendance, account, saveSession } = useStore()
   const toast = useToast()
   const [card, setCard] = useState<LookupCard | null>(null)
   const [manual, setManual] = useState('')
@@ -26,11 +26,49 @@ export function AdminScanner() {
   const session = db.sessions.find((s) => s.id === sessionId)
   const event = session ? db.events.find((e) => e.id === session.event_id) : null
 
-  const todaySessions = db.sessions.filter((s) => s.session_date === todayISO())
+  const today = todayISO()
+  const todaySessions = useMemo(() => db.sessions.filter((s) => s.session_date === today), [db.sessions, today])
   const suggestedSessions = todaySessions
+  const scheduledEvent = useMemo(() => db.events.find((e) => {
+    if (!e.active) return false
+    const localDate = (value: string) => {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(new Date(value))
+      const get = (type: string) => parts.find((part) => part.type === type)?.value || ''
+      return `${get('year')}-${get('month')}-${get('day')}`
+    }
+    return localDate(e.starts_at) <= today && localDate(e.ends_at) >= today
+  }), [db.events, today])
+
   useEffect(() => {
-    if (!sessionId && todaySessions.length) setSessionId(todaySessions[0].id)
-  }, [sessionId, todaySessions])
+    if (!ready || todaySessions.length || !scheduledEvent) return
+    const localTime = (value: string) => new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).format(new Date(value))
+    const startTime = localTime(scheduledEvent.starts_at)
+    const endTime = localTime(scheduledEvent.ends_at)
+    const [hour, minute] = startTime.split(':').map(Number)
+    const lateMinutes = Math.min(23 * 60 + 59, hour * 60 + minute + 15)
+    const lateAfter = `${String(Math.floor(lateMinutes / 60)).padStart(2, '0')}:${String(lateMinutes % 60).padStart(2, '0')}`
+    const generated: SessionItem = {
+      id: crypto.randomUUID(), event_id: scheduledEvent.id, name: 'Jornada general',
+      session_date: today, start_time: startTime, end_time: endTime, late_after: lateAfter,
+    }
+    let active = true
+    void saveSession(generated).then((result) => {
+      if (active && !result.ok) setErr(result.error || 'No se pudo crear la jornada automática.')
+    })
+    return () => { active = false }
+  }, [ready, todaySessions.length, scheduledEvent, today, saveSession])
+
+  useEffect(() => {
+    if (todaySessions.length && !todaySessions.some((s) => s.id === sessionId)) {
+      setSessionId(todaySessions[0].id)
+    } else if (!todaySessions.length && sessionId) {
+      setSessionId('')
+    }
+  }, [todaySessions, sessionId])
 
   const onDetected = (raw: string) => {
     if (!sessionId || !session) { setErr('No hay una jornada programada para hoy. Registra primero el evento y su jornada en Eventos y jornadas.'); return }
@@ -215,10 +253,11 @@ export function AdminEvents() {
     setEdit(null)
   }
 
-  const persistSession = () => {
+  const persistSession = async () => {
     if (!sess) return
     if (!sess.name.trim() || !sess.event_id) { toast.push('Completa los datos de la jornada.', 'err'); return }
-    saveSession({ ...sess, id: sess.id || crypto.randomUUID() })
+    const result = await saveSession({ ...sess, id: sess.id || crypto.randomUUID() })
+    if (!result.ok) { toast.push(result.error || 'No se pudo guardar la jornada.', 'err'); return }
     toast.push('Jornada guardada.')
     setSess(null)
   }
