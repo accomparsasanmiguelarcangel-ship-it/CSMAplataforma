@@ -216,20 +216,28 @@ export function AdminEvents() {
   const openNew = () => setEdit(emptyEvent())
   const openEdit = (e: EventItem) => setEdit({ ...e })
 
-  const persist = () => {
+  const persist = async () => {
     if (!edit) return
     if (!edit.name.trim()) { toast.push('El nombre del evento es obligatorio.', 'err'); return }
-    saveEvent({ ...edit, id: edit.id || crypto.randomUUID(), starts_at: new Date(edit.starts_at).toISOString(), ends_at: new Date(edit.ends_at).toISOString() })
-    toast.push('Evento guardado.')
-    setEdit(null)
+    try {
+      await saveEvent({ ...edit, id: edit.id || crypto.randomUUID(), starts_at: new Date(edit.starts_at).toISOString(), ends_at: new Date(edit.ends_at).toISOString() })
+      toast.push('Evento guardado y sincronizado.')
+      setEdit(null)
+    } catch (error) {
+      toast.push('No se pudo guardar el evento: ' + (error instanceof Error ? error.message : String(error)), 'err')
+    }
   }
 
-  const persistSession = () => {
+  const persistSession = async () => {
     if (!sess) return
     if (!sess.name.trim() || !sess.event_id) { toast.push('Completa los datos de la jornada.', 'err'); return }
-    saveSession({ ...sess, id: sess.id || crypto.randomUUID() })
-    toast.push('Jornada guardada.')
-    setSess(null)
+    try {
+      await saveSession({ ...sess, id: sess.id || crypto.randomUUID() })
+      toast.push('Jornada guardada y sincronizada.')
+      setSess(null)
+    } catch (error) {
+      toast.push('No se pudo guardar la jornada: ' + (error instanceof Error ? error.message : String(error)), 'err')
+    }
   }
 
   return (
