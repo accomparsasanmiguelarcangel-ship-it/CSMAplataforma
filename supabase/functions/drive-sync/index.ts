@@ -156,6 +156,32 @@ async function ensureStructure(token: string, cache: FolderMap) {
   return tree
 }
 
+
+async function listDriveFiles(token: string, parentId: string): Promise<Array<Record<string, unknown>>> {
+  const files: Array<Record<string, unknown>> = []
+  let pageToken = ''
+  do {
+    const url = new URL('https://www.googleapis.com/drive/v3/files')
+    url.searchParams.set('q', `'${parentId}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'`)
+    url.searchParams.set('pageSize', '1000')
+    url.searchParams.set('orderBy', 'name')
+    url.searchParams.set('fields', 'nextPageToken,files(id,name,mimeType,size,modifiedTime,webViewLink,description)')
+    url.searchParams.set('supportsAllDrives', 'true')
+    url.searchParams.set('includeItemsFromAllDrives', 'true')
+    if (SHARED_DRIVE) {
+      url.searchParams.set('corpora', 'drive')
+      url.searchParams.set('driveId', SHARED_DRIVE)
+    }
+    if (pageToken) url.searchParams.set('pageToken', pageToken)
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    const payload = await response.json()
+    if (!response.ok) throw new Error(`Google Drive: ${payload.error?.message || response.statusText}`)
+    files.push(...(payload.files || []))
+    pageToken = payload.nextPageToken || ''
+  } while (pageToken)
+  return files
+}
+
 /* ── Handler ────────────────────────────────────────────────────────────── */
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -192,6 +218,56 @@ Deno.serve(async (req) => {
 
     const token = await getAccessToken()
     const tree = await ensureStructure(token, cache)
+
+    if (kind === 'list_documents') {
+      const { data: profile, error: profileError } = await admin.from('profiles')
+        .select('role, active').eq('id', userRes.user.id).maybeSingle()
+      if (profileError || !profile?.active) {
+        return new Response(JSON.stringify({ error: 'Perfil no autorizado.' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } })
+      }
+      let unlocked = profile.role === 'superadmin' || profile.role === 'admin'
+      if (!unlocked) {
+        if (profile.role !== 'participante') {
+          return new Response(JSON.stringify({ error: 'Este rol no tiene acceso a la biblioteca.' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } })
+        }
+        const { data: participant, error: participantError } = await admin.from('participants')
+          .select('id,status').eq('profile_id', userRes.user.id).maybeSingle()
+        if (participantError || !participant || !['inscrito', 'activo', 'observado'].includes(participant.status)) {
+          return new Response(JSON.stringify({ error: 'Tu inscripción aún no habilita la documentación.' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } })
+        }
+        const [{ data: settings }, { data: payments, error: paymentError }] = await Promise.all([
+          admin.from('settings').select('docs_require_payment').eq('id', 'global').maybeSingle(),
+          admin.from('payments').select('amount').eq('participant_id', participant.id).eq('status', 'validado'),
+        ])
+        if (paymentError) throw paymentError
+        const paid = (payments || []).reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+        unlocked = settings?.docs_require_payment === false || paid > 0
+      }
+      const categories = [
+        { key: 'DOC_ESTATUTOS', label: 'Estatutos', free: true },
+        { key: 'DOC_REGLAMENTOS', label: 'Reglamentos', free: false },
+        { key: 'DOC_COMUNICADOS', label: 'Comunicados', free: false },
+        { key: 'DOC_CRONOGRAMAS', label: 'Cronogramas', free: false },
+      ]
+      const documents = (await Promise.all(categories.filter((category) => unlocked || category.free).map(async (category) => {
+        const files = await listDriveFiles(token, tree[category.key])
+        return files.map((file) => ({
+          id: `drive-${file.id}`,
+          title: String(file.name || 'Documento'),
+          category: category.label,
+          description: String(file.description || ''),
+          file_url: String(file.webViewLink || `https://drive.google.com/file/d/${file.id}/view`),
+          drive_file_id: String(file.id),
+          requires_payment: !category.free,
+          published: true,
+          published_at: String(file.modifiedTime || new Date().toISOString()),
+          size_label: file.size ? `${(Number(file.size) / 1024).toFixed(0)} KB` : 'Google Drive',
+        }))
+      }))).flat()
+      return new Response(JSON.stringify({ ok: true, documents }), {
+        headers: { ...cors, 'Content-Type': 'application/json' },
+      })
+    }
 
     // Carpetas de eventos del año en curso
     const year = new Date().getFullYear()
