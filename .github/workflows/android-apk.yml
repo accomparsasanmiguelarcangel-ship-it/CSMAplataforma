@@ -40,7 +40,9 @@ jobs:
       - name: Generate Android app icon from comparsa logo
         run: |
           mkdir -p assets
-          cp public/img/logo.png assets/icon-only.png
+          # Capacitor Assets detects assets/icon.png. Keep the full logo centered
+          # on a square transparent canvas so it is not cropped.
+          convert public/img/logo.png -resize 768x768 -gravity center -background none -extent 1024x1024 assets/icon.png
           npx --yes @capacitor/assets@3.0.5 generate --android
 
       - name: Sync Capacitor assets
