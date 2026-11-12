@@ -251,13 +251,18 @@ export function AdminParticipants() {
 /* ── FICHA INDIVIDUAL ───────────────────────────────────────────────────── */
 export function AdminParticipantDetail() {
   const { id } = useParams()
-  const { db, account, paymentsOf, attendanceOf, reviewsOf, setEnrollmentStatus, updateParticipant } = useStore()
+  const { db, user, account, paymentsOf, attendanceOf, reviewsOf, setEnrollmentStatus, updateParticipant } = useStore()
   const p = db.participants.find((x) => x.id === id)
   const [tab, setTab] = useState<'resumen' | 'pagos' | 'asistencias' | 'qr'>('resumen')
   const [statusModal, setStatusModal] = useState(false)
   const [newStatus, setNewStatus] = useState<Participant['status']>('activo')
   const [note, setNote] = useState('')
   const [receipt, setReceipt] = useState<string | null>(null)
+  const [feeModal, setFeeModal] = useState(false)
+  const [feeValue, setFeeValue] = useState('')
+  const [feeReason, setFeeReason] = useState('')
+  const [feeSaving, setFeeSaving] = useState(false)
+  const [feeError, setFeeError] = useState('')
   const qr = useQr(p?.qr_token, 220)
 
   if (!p) return <div className="page"><Banner tone="bad" title="No encontrado">El participante solicitado no existe.</Banner></div>
@@ -312,6 +317,8 @@ export function AdminParticipantDetail() {
               <dt>Correo</dt><dd style={{ wordBreak: 'break-all' }}>{p.email || db.profiles.find((x) => x.id === p.profile_id)?.email || '—'}</dd>
               <dt>Dirección</dt><dd>{p.address}</dd>
               <dt>Grupo / delegación</dt><dd>{p.group_name}</dd>
+              <dt>Participación</dt><dd>{p.participation_type || '—'}</dd>
+              <dt>Fecha de nacimiento</dt><dd>{p.birth_date ? shortDate(p.birth_date) : '—'}</dd>
               <dt>Inscripción</dt><dd>{dateTime(p.created_at)}</dd>
               {db.formFields.map((f) => p.extra?.[f.key] ? (
                 <div key={f.id} style={{ display: 'contents' }}><dt>{f.label}</dt><dd>{p.extra[f.key]}</dd></div>
@@ -321,6 +328,13 @@ export function AdminParticipantDetail() {
           </SectionCard>
 
           <SectionCard title="Estado de cuenta">
+            <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
+              <div className="tiny muted">Costo asignado: <b>{money(acc.total_amount)}</b>{p.fee_amount !== null && p.fee_amount !== undefined ? ' · Monto especial' : ' · Monto general'}</div>
+              <button className="btn btn-sm" onClick={() => { setFeeValue(p.fee_amount === null || p.fee_amount === undefined ? '' : String(p.fee_amount)); setFeeReason(p.fee_adjustment_reason || ''); setFeeError(''); setFeeModal(true) }}>
+                <Icon name="edit" size={13} /> Ajustar / condonar
+              </button>
+            </div>
+            {p.fee_adjustment_reason && <div className="banner info" style={{ marginBottom: 10 }}><Icon name="info" size={15} /><div>Motivo: {p.fee_adjustment_reason}</div></div>}
             <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
               <span className="tiny muted">{money(acc.total_paid)} de {money(acc.total_amount)}</span>
               <strong>{pct}%</strong>
@@ -432,6 +446,40 @@ export function AdminParticipantDetail() {
           </div>
         )}
       </SectionCard>
+
+      <Modal open={feeModal} onClose={() => { if (!feeSaving) setFeeModal(false) }} title="Ajustar cuota del participante"
+        footer={<>
+          <button className="btn" disabled={feeSaving} onClick={() => setFeeModal(false)}>Cancelar</button>
+          <button className="btn btn-primary" disabled={feeSaving || (feeValue.trim() !== '' && (!Number.isFinite(Number(feeValue)) || Number(feeValue) < 0)) || (feeValue.trim() !== '' && !feeReason.trim())}
+            onClick={async () => {
+              setFeeError('')
+              if (feeValue.trim() !== '' && !feeReason.trim()) { setFeeError('Indica el motivo de la rebaja o condonación.'); return }
+              setFeeSaving(true)
+              const amount = feeValue.trim() === '' ? null : Number(feeValue)
+              const result = await updateParticipant(p.id, {
+                fee_amount: amount,
+                fee_adjustment_reason: amount === null ? null : feeReason.trim(),
+                fee_adjusted_by: amount === null ? null : user?.profile.id || null,
+                fee_adjusted_at: amount === null ? null : new Date().toISOString(),
+              })
+              setFeeSaving(false)
+              if (!result.ok) { setFeeError(result.error || 'No se pudo guardar el monto.'); return }
+              setFeeModal(false)
+            }}>
+            {feeSaving ? 'Guardando…' : 'Guardar monto'}
+          </button>
+        </>}>
+        <div className="stack">
+          <div className="banner info"><Icon name="info" size={16} /><div>Deja el monto vacío para usar la cuota general ({money(db.settings.total_amount)}). Escribe <b>0</b> para condonar totalmente o un monto menor para aplicar una rebaja.</div></div>
+          <Field label="Monto que debe pagar (S/)">
+            <input className="input" type="number" min="0" step="0.01" value={feeValue} onChange={(e) => setFeeValue(e.target.value)} placeholder={String(db.settings.total_amount)} />
+          </Field>
+          {feeValue.trim() !== '' && <Field label="Motivo de la rebaja o condonación" required>
+            <textarea className="textarea" value={feeReason} onChange={(e) => setFeeReason(e.target.value)} placeholder="Ej. Apoyo aprobado por la directiva." />
+          </Field>}
+          {feeError && <Banner tone="bad" title="No se pudo guardar">{feeError}</Banner>}
+        </div>
+      </Modal>
 
       <Modal open={statusModal} onClose={() => setStatusModal(false)} title="Cambiar estado de inscripción"
         footer={<>
