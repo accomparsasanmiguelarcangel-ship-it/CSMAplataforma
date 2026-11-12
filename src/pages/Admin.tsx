@@ -171,6 +171,8 @@ export function AdminParticipants() {
     { header: 'DNI', value: (p: Participant) => p.dni },
     { header: 'Celular', value: (p: Participant) => p.phone },
     { header: 'Grupo', value: (p: Participant) => p.group_name },
+    { header: 'Participación', value: (p: Participant) => p.participation_type || '' },
+    { header: 'Nacimiento', value: (p: Participant) => p.birth_date || '' },
     { header: 'Inscripción', value: (p: Participant) => shortDate(p.created_at) },
     { header: 'Pagado', value: (p: Participant) => money(account(p.id).total_paid) },
     { header: 'Saldo', value: (p: Participant) => money(account(p.id).balance) },
@@ -214,7 +216,7 @@ export function AdminParticipants() {
           <table className="table">
             <thead>
               <tr>
-                <th>Código</th><th>Participante</th><th>DNI</th><th>Grupo</th>
+                <th>Código</th><th>Participante</th><th>DNI</th><th>Grupo</th><th>Participación</th><th>Nacimiento</th>
                 <th className="num">Pagado</th><th className="num">Saldo</th><th>Estado</th><th></th>
               </tr>
             </thead>
@@ -232,6 +234,8 @@ export function AdminParticipants() {
                     </td>
                     <td className="mono tiny">{p.dni}</td>
                     <td className="tiny">{p.group_name}</td>
+                    <td className="tiny">{p.participation_type || '—'}</td>
+                    <td className="tiny">{p.birth_date ? shortDate(p.birth_date) : '—'}</td>
                     <td className="num">{money(acc.total_paid)}</td>
                     <td className="num" style={{ color: acc.balance > 0 ? 'var(--danger)' : 'var(--ok)' }}>{money(acc.balance)}</td>
                     <td><Badge tone={statusTone(p.status)}>{enrollmentStatusLabel[p.status]}</Badge></td>
