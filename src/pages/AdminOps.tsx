@@ -343,8 +343,9 @@ export function AdminEvents() {
           <div className="form-grid">
             <Field label="Nombre" required full><input className="input" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="Presentación oficial — Fiesta Patronal" /></Field>
             <Field label="Descripción" full><textarea className="textarea" value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
-            <Field label="Lugar"><input className="input" value={edit.place} onChange={(e) => setEdit({ ...edit, place: e.target.value })} /></Field>
-            <Field label="Enlace de Google Maps" full hint="Pega el enlace de Google Maps del lugar."><input className="input" type="url" value={edit.map_url || ''} onChange={(e) => setEdit({ ...edit, map_url: e.target.value })} placeholder="https://maps.google.com/..." /></Field>
+            <Field label="Lugar o dirección" full hint="Escribe la dirección exacta o nombre del lugar. Los participantes podrán abrirlo en Google Maps."><input className="input" value={edit.place} onChange={(e) => setEdit({ ...edit, place: e.target.value })} placeholder="Dirección, local o punto de encuentro" /></Field>
+            <Field label="Enlace opcional de Google Maps" full hint="Si ya tienes un enlace directo al pin, puedes pegarlo aquí."><input className="input" type="url" value={edit.map_url || ''} onChange={(e) => setEdit({ ...edit, map_url: e.target.value })} placeholder="https://maps.google.com/..." /></Field>
+            <div className="tiny muted"> <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(edit.place || edit.name)}`} target="_blank" rel="noreferrer">Buscar/ubicar este lugar en Google Maps ↗</a> — puedes copiar el enlace del pin y pegarlo arriba.</div>
             <Field label="Categorías (separadas por coma)" hint="Vacío = todas las categorías">
               <input className="input" value={edit.categories.join(', ')} onChange={(e) => setEdit({ ...edit, categories: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
             </Field>
