@@ -42,7 +42,7 @@ jobs:
         uses: actions/configure-pages@v5
       # Use a fresh workflow run; reruns can leave duplicate Pages artifacts.
       - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: './dist'
       - name: Deploy to GitHub Pages
