@@ -334,12 +334,12 @@ export function AdminParticipantDetail() {
               </div>
             )}
             <span className="tiny muted mono">{p.photo_drive_id || p.photo_storage_path || ''}</span>
-            <input id="participant-photo-upload" type="file" accept="image/jpeg,image/png,image/webp" disabled={photoSaving} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }} onChange={async (e) => {
+            <input id="participant-photo-upload" type="file" accept="image/jpeg,image/png,image/webp" disabled={photoSaving} style={{ width: '100%', maxWidth: 360 }} onChange={async (e) => {
               const file = e.target.files?.[0]
               e.target.value = ''
               if (!file) return
               if (!supabase) { alert('Esta acción requiere conexión a Supabase.'); return }
-              if (!file.type.startsWith('image/')) { alert('Selecciona un archivo de imagen.'); return }
+              if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { alert('Selecciona una imagen JPG, PNG o WebP.'); return }
               if (file.size > 8 * 1024 * 1024) { alert('La imagen debe pesar menos de 8 MB.'); return }
               setPhotoSaving(true)
               try {
@@ -351,23 +351,23 @@ export function AdminParticipantDetail() {
                   img.src = url
                 })
                 const upload = await supabase.storage.from('private-files').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
-                if (upload.error) throw upload.error
-                const { error: rowError } = await supabase.from('participants').update({ photo_storage_path: path }).eq('id', p.id)
-                if (rowError) throw rowError
-                let driveId = p.photo_drive_id || path
-                const { data: drive, error: driveError } = await supabase.functions.invoke('drive-sync', { body: { code: p.code, kind: 'selfie', storagePath: path, participantId: p.id, fileName: `${p.code}_SELFIE.jpg` } })
-                if (!driveError && drive?.ok === true) driveId = drive.fileId || drive.name || driveId
+                if (upload.error) throw new Error('Storage: ' + upload.error.message)
                 const { data: signed, error: signedError } = await supabase.storage.from('private-files').createSignedUrl(path, 3600)
-                if (signedError || !signed?.signedUrl) throw signedError || new Error('No se pudo generar vista previa.')
-                const result = await updateParticipant(p.id, { photo_storage_path: path, photo_drive_id: driveId, photo_url: signed.signedUrl } as Partial<Participant>)
-                if (!result.ok) throw new Error(result.error || 'No se pudo actualizar la ficha.')
-                alert('Fotografía actualizada correctamente.')
+                if (signedError || !signed?.signedUrl) throw new Error('No se pudo generar vista previa: ' + (signedError?.message || 'sin URL'))
+                const result = await updateParticipant(p.id, { photo_storage_path: path, photo_url: signed.signedUrl } as Partial<Participant>)
+                if (!result.ok) throw new Error(result.error || 'No se pudo guardar la ficha.')
+                // Drive es una copia secundaria; no debe bloquear la actualización principal.
+                try {
+                  const { data: drive, error: driveError } = await supabase.functions.invoke('drive-sync', { body: { code: p.code, kind: 'selfie', storagePath: path, participantId: p.id, fileName: `${p.code}_SELFIE.jpg` } })
+                  if (!driveError && drive?.ok === true && (drive.fileId || drive.name)) {
+                    await updateParticipant(p.id, { photo_drive_id: drive.fileId || drive.name } as Partial<Participant>)
+                  }
+                } catch { /* Storage queda como fuente principal si Drive falla */ }
+                alert('Fotografía actualizada. Si no aparece inmediatamente, vuelve a abrir la ficha.')
               } catch (err) { alert('No se pudo cambiar la fotografía: ' + (err instanceof Error ? err.message : String(err))) }
               finally { setPhotoSaving(false) }
             }} />
-            <button type="button" className="btn btn-primary" disabled={photoSaving} onClick={() => document.getElementById('participant-photo-upload')?.click()}>
-              <Icon name="upload" size={15} /> {photoSaving ? 'Subiendo fotografía…' : 'Cambiar fotografía'}
-            </button>
+            <div className="tiny muted">{photoSaving ? 'Subiendo y guardando…' : 'Selecciona la nueva fotografía en el control de archivos.'}</div>
             <span className="hint">Imagen JPG, PNG o WebP; máximo 8 MB. Se guarda en Storage y se sincroniza a Drive cuando está disponible.</span>
           </div>
         </SectionCard>
