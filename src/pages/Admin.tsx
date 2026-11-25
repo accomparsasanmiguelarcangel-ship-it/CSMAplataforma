@@ -334,49 +334,40 @@ export function AdminParticipantDetail() {
               </div>
             )}
             <span className="tiny muted mono">{p.photo_drive_id || p.photo_storage_path || ''}</span>
-            <label className="btn btn-primary" style={{ cursor: 'pointer', opacity: photoSaving ? .65 : 1 }}>
+            <input id="participant-photo-upload" type="file" accept="image/jpeg,image/png,image/webp" disabled={photoSaving} style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }} onChange={async (e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (!file) return
+              if (!supabase) { alert('Esta acción requiere conexión a Supabase.'); return }
+              if (!file.type.startsWith('image/')) { alert('Selecciona un archivo de imagen.'); return }
+              if (file.size > 8 * 1024 * 1024) { alert('La imagen debe pesar menos de 8 MB.'); return }
+              setPhotoSaving(true)
+              try {
+                const path = `participantes/${p.code}/${p.code}_SELFIE.jpg`
+                const blob = file.type === 'image/jpeg' ? file : await new Promise<Blob>((resolve, reject) => {
+                  const img = new Image(), url = URL.createObjectURL(file)
+                  img.onload = () => { const canvas = document.createElement('canvas'); canvas.width = img.naturalWidth; canvas.height = img.naturalHeight; canvas.getContext('2d')?.drawImage(img, 0, 0); canvas.toBlob(b => { URL.revokeObjectURL(url); b ? resolve(b) : reject(new Error('No se pudo convertir la imagen.')) }, 'image/jpeg', .88) }
+                  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen.')) }
+                  img.src = url
+                })
+                const upload = await supabase.storage.from('private-files').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+                if (upload.error) throw upload.error
+                const { error: rowError } = await supabase.from('participants').update({ photo_storage_path: path }).eq('id', p.id)
+                if (rowError) throw rowError
+                let driveId = p.photo_drive_id || path
+                const { data: drive, error: driveError } = await supabase.functions.invoke('drive-sync', { body: { code: p.code, kind: 'selfie', storagePath: path, participantId: p.id, fileName: `${p.code}_SELFIE.jpg` } })
+                if (!driveError && drive?.ok === true) driveId = drive.fileId || drive.name || driveId
+                const { data: signed, error: signedError } = await supabase.storage.from('private-files').createSignedUrl(path, 3600)
+                if (signedError || !signed?.signedUrl) throw signedError || new Error('No se pudo generar vista previa.')
+                const result = await updateParticipant(p.id, { photo_storage_path: path, photo_drive_id: driveId, photo_url: signed.signedUrl } as Partial<Participant>)
+                if (!result.ok) throw new Error(result.error || 'No se pudo actualizar la ficha.')
+                alert('Fotografía actualizada correctamente.')
+              } catch (err) { alert('No se pudo cambiar la fotografía: ' + (err instanceof Error ? err.message : String(err))) }
+              finally { setPhotoSaving(false) }
+            }} />
+            <button type="button" className="btn btn-primary" disabled={photoSaving} onClick={() => document.getElementById('participant-photo-upload')?.click()}>
               <Icon name="upload" size={15} /> {photoSaving ? 'Subiendo fotografía…' : 'Cambiar fotografía'}
-              <input type="file" accept="image/*" disabled={photoSaving} style={{ display: 'none' }} onChange={async (e) => {
-                const file = e.target.files?.[0]
-                e.target.value = ''
-                if (!file) return
-                if (!supabase) { alert('Esta acción requiere conexión a Supabase.'); return }
-                if (!file.type.startsWith('image/')) { alert('Selecciona un archivo de imagen.'); return }
-                if (file.size > 8 * 1024 * 1024) { alert('La imagen debe pesar menos de 8 MB.'); return }
-                setPhotoSaving(true)
-                try {
-                  const path = `participantes/${p.code}/${p.code}_SELFIE.jpg`
-                  const blob = file.type === 'image/jpeg' ? file : await new Promise<Blob>((resolve, reject) => {
-                    const img = new Image()
-                    const url = URL.createObjectURL(file)
-                    img.onload = () => {
-                      const canvas = document.createElement('canvas')
-                      canvas.width = img.naturalWidth; canvas.height = img.naturalHeight
-                      canvas.getContext('2d')?.drawImage(img, 0, 0)
-                      canvas.toBlob((b) => { URL.revokeObjectURL(url); b ? resolve(b) : reject(new Error('No se pudo convertir la imagen.')) }, 'image/jpeg', .88)
-                    }
-                    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('No se pudo leer la imagen.')) }
-                    img.src = url
-                  })
-                  const upload = await supabase.storage.from('private-files').upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
-                  if (upload.error) throw upload.error
-                  const { error: rowError } = await supabase.from('participants').update({ photo_storage_path: path }).eq('id', p.id)
-                  if (rowError) throw rowError
-                  let driveId = p.photo_drive_id || path
-                  try {
-                    const { data, error } = await supabase.functions.invoke('drive-sync', { body: { code: p.code, kind: 'selfie', storagePath: path, participantId: p.id, fileName: `${p.code}_SELFIE.jpg` } })
-                    if (!error && data?.ok === true) driveId = data.fileId || data.name || driveId
-                  } catch { /* Supabase Storage es el respaldo principal; sincronización a Drive opcional */ }
-                  const { data: signed, error: signedError } = await supabase.storage.from('private-files').createSignedUrl(path, 3600)
-                  if (signedError || !signed?.signedUrl) throw signedError || new Error('No se pudo generar vista previa.')
-                  const result = await updateParticipant(p.id, { photo_storage_path: path, photo_drive_id: driveId, photo_url: signed.signedUrl } as Partial<Participant>)
-                  if (!result.ok) throw new Error(result.error || 'No se pudo actualizar la ficha.')
-                  alert('Fotografía actualizada correctamente.')
-                } catch (err) {
-                  alert('No se pudo cambiar la fotografía: ' + (err instanceof Error ? err.message : String(err)))
-                } finally { setPhotoSaving(false) }
-              }} />
-            </label>
+            </button>
             <span className="hint">Imagen JPG, PNG o WebP; máximo 8 MB. Se guarda en Storage y se sincroniza a Drive cuando está disponible.</span>
           </div>
         </SectionCard>
