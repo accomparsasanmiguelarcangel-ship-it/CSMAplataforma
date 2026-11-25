@@ -244,17 +244,34 @@ const emptyEvent = (): EventItem => ({
 
 function MapPinPicker({value,place,onChange}:{value:string;place:string;onChange:(v:string)=>void}) {
   const mapRef=useRef<HTMLDivElement|null>(null), mapObj=useRef<any>(null), markerRef=useRef<any>(null), changeRef=useRef(onChange);
-  const [status,setStatus]=useState('Cargando mapa…'); useEffect(()=>{changeRef.current=onChange},[onChange]);
-  useEffect(()=>{let disposed=false;
-    const load=()=>new Promise<void>((resolve,reject)=>{if((window as any).L){resolve();return}
+  const [status,setStatus]=useState('Cargando mapa…');
+  useEffect(()=>{changeRef.current=onChange},[onChange]);
+  useEffect(()=>{
+    let disposed=false;
+    const load=()=>new Promise<void>((resolve,reject)=>{
+      if((window as any).L){resolve();return}
       let script=document.querySelector('script[data-leaflet-js]') as HTMLScriptElement|null;
       if(!document.querySelector('link[data-leaflet-css]')){const link=document.createElement('link');link.rel='stylesheet';link.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';link.dataset.leafletCss='1';document.head.appendChild(link)}
-      if(script){script.addEventListener('load',()=>resolve(),{once:true});script.addEventListener('error',()=>reject(),{once:true});return}
-      script=document.createElement('script');script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';script.dataset.leafletJs='1';script.onload=()=>resolve();script.onerror=()=>reject();document.head.appendChild(script)});
-    const init=async()=>{await load();if(disposed||!mapRef.current)return;const L=(window as any).L;const m=value.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);const lat=m?Number(m[1]):-12.0453,lng=m?Number(m[2]):-77.0308;
-      if(!mapObj.current){mapObj.current=L.map(mapRef.current,{center:[lat,lng],zoom:m?16:13});L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(mapObj.current);mapObj.current.on('click',(ev:any)=>{const pt=ev.latlng;if(markerRef.current)markerRef.current.setLatLng(pt);else markerRef.current=L.marker(pt).addTo(mapObj.current);changeRef.current(pt.lat.toFixed(6)+', '+pt.lng.toFixed(6));});}
-      if(m){markerRef.current?markerRef.current.setLatLng([lat,lng]):markerRef.current=L.marker([lat,lng]).addTo(mapObj.current)}mapObj.current.setView([lat,lng],m?16:13);setTimeout(()=>mapObj.current?.invalidateSize(),200);setStatus('Pulsa o haz clic en cualquier punto del mapa para fijar el marcador.');};
-    init().catch(()=>setStatus('Error al cargar el mapa. Intenta recargar la ventana o revisar conexión.'));return()=>{disposed=true};},[]);
+      if(script){
+        if((script as any).__leafletLoaded){resolve();return}
+        script.addEventListener('load',()=>resolve(),{once:true});script.addEventListener('error',()=>reject(new Error('Leaflet failed')),{once:true});return
+      }
+      script=document.createElement('script');script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';script.dataset.leafletJs='1';script.onload=()=>{(script as any).__leafletLoaded=true;resolve()};script.onerror=()=>reject(new Error('Leaflet failed'));document.head.appendChild(script)
+    });
+    const init=async()=>{
+      await load();if(disposed||!mapRef.current)return;
+      const L=(window as any).L;const m=value.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+      const lat=m?Number(m[1]):-13.1631,lng=m?Number(m[2]):-74.2236;
+      mapObj.current=L.map(mapRef.current,{center:[lat,lng],zoom:m?16:13, tap:true});
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(mapObj.current);
+      mapObj.current.on('click',(ev:any)=>{const pt=ev.latlng;if(markerRef.current)markerRef.current.setLatLng(pt);else markerRef.current=L.marker(pt).addTo(mapObj.current);changeRef.current(pt.lat.toFixed(6)+', '+pt.lng.toFixed(6));setStatus('Punto seleccionado. Puedes hacer clic nuevamente para moverlo.')});
+      if(m)markerRef.current=L.marker([lat,lng]).addTo(mapObj.current);
+      setStatus('Haz clic o pulsa en el mapa para colocar el punto. El mapa inicia en Ayacucho.');
+      requestAnimationFrame(()=>mapObj.current?.invalidateSize());
+    };
+    init().catch(()=>setStatus('No se pudo cargar el mapa. Revisa tu conexión e intenta nuevamente.'));
+    return()=>{disposed=true;if(mapObj.current){mapObj.current.remove();mapObj.current=null;markerRef.current=null}};
+  },[]);
   useEffect(()=>{const L=(window as any).L;const p=value.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);if(mapObj.current&&L&&p){const ll=[Number(p[1]),Number(p[2])];markerRef.current?markerRef.current.setLatLng(ll):markerRef.current=L.marker(ll).addTo(mapObj.current);mapObj.current.setView(ll,16)}},[value]);
   return <div style={{gridColumn:'1 / -1'}}><div ref={mapRef} style={{height:420,width:'100%',minWidth:280,border:'1px solid var(--line)',borderRadius:12,background:'#e8edf0',zIndex:0}}/><p className="tiny muted" style={{marginTop:8}}>{status} {value&&<b>Coordenadas seleccionadas: {value}</b>}</p></div>;
 }
