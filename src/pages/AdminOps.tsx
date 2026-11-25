@@ -237,7 +237,7 @@ export function AdminScanner() {
 
 /* ══════════════════════ EVENTOS Y JORNADAS ═══════════════════════════════ */
 const emptyEvent = (): EventItem => ({
-  id: '', name: '', description: '', place: '', starts_at: new Date().toISOString().slice(0, 16),
+  id: '', name: '', description: '', place: '', map_url: '', starts_at: new Date().toISOString().slice(0, 16),
   ends_at: new Date().toISOString().slice(0, 16), late_after: '09:15', entry_until: '11:00', categories: [], requires_payment: false,
   min_paid_amount: 0, active: true,
 })
@@ -292,7 +292,7 @@ export function AdminEvents() {
                   </div>
                   <p className="tiny muted" style={{ marginTop: 3 }}>{e.description}</p>
                   <div className="tiny muted" style={{ marginTop: 4 }}>
-                    {shortDate(e.starts_at)} · Inicio {timeOnly(e.starts_at)} · Tardanza desde {e.late_after || '—'} · Ingreso hasta {e.entry_until || '—'} · Final {timeOnly(e.ends_at)} · {e.place} · {attended} asistencia(s)
+                    {shortDate(e.starts_at)} · Inicio {timeOnly(e.starts_at)} · Tardanza desde {e.late_after || '—'} · Ingreso hasta {e.entry_until || '—'} · Final {timeOnly(e.ends_at)} · {e.place} · {attended} asistencia(s){e.map_url && <> · <a href={e.map_url} target="_blank" rel="noreferrer">Abrir mapa</a></>}
                   </div>
                 </div>
                 <div className="row" style={{ gap: 6 }}>
@@ -344,6 +344,7 @@ export function AdminEvents() {
             <Field label="Nombre" required full><input className="input" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} placeholder="Presentación oficial — Fiesta Patronal" /></Field>
             <Field label="Descripción" full><textarea className="textarea" value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
             <Field label="Lugar"><input className="input" value={edit.place} onChange={(e) => setEdit({ ...edit, place: e.target.value })} /></Field>
+            <Field label="Enlace de Google Maps" full hint="Pega el enlace de Google Maps del lugar."><input className="input" type="url" value={edit.map_url || ''} onChange={(e) => setEdit({ ...edit, map_url: e.target.value })} placeholder="https://maps.google.com/..." /></Field>
             <Field label="Categorías (separadas por coma)" hint="Vacío = todas las categorías">
               <input className="input" value={edit.categories.join(', ')} onChange={(e) => setEdit({ ...edit, categories: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
             </Field>
