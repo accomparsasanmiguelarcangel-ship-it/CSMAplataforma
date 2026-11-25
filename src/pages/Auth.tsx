@@ -4,6 +4,7 @@ import { useStore, isDemoMode } from '../lib/store'
 import { Field, Icon, Spinner, Banner } from '../components/ui'
 import { SelfieCapture } from '../components/Camera'
 import { roleLabel } from '../lib/utils'
+import { supabase } from '../lib/supabase'
 
 const GROUPS = ['Delegación San Miguel', 'Delegación Centro', 'Sección Danza', 'Sección Música', 'Categoría Juvenil', 'Categoría Adultos']
 
@@ -106,6 +107,7 @@ export function Login() {
               {busy ? <Spinner /> : <><Icon name="logout" size={16} /> Ingresar</>}
             </button>
           </form>
+          {supabase && <p className="tiny" style={{ textAlign: 'right', marginTop: 10 }}><Link to="/recuperar-clave"><strong>¿Olvidaste tu contraseña?</strong></Link></p>}
 
           <div className="divider" />
           <p className="tiny muted" style={{ marginBottom: 8 }}>¿Aún no estás inscrito? <Link to="/registro"><strong>Completa tu inscripción</strong></Link></p>
@@ -151,6 +153,31 @@ export function Login() {
       </div>
     </div>
   )
+}
+
+
+export function RecoverPassword() {
+  const [email, setEmail] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [err, setErr] = useState('')
+  const nav = useNavigate()
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); setErr(''); setBusy(true)
+    if (!supabase) { setErr('La recuperación de contraseña requiere conexión con Supabase.'); setBusy(false); return }
+    const redirectTo = window.location.origin + import.meta.env.BASE_URL + 'restablecer-clave'
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo })
+    setBusy(false)
+    if (error) setErr(error.message)
+    else setSent(true)
+  }
+  return <div className="auth-wrap" style={{ gridTemplateColumns: 'minmax(0,1fr)' }}><div className="auth-form-side"><div className="auth-card" style={{ maxWidth: 480 }}><div className="brand-mini"><img src={`${import.meta.env.BASE_URL}img/logo.png`} alt="Logo" /></div><h1>Recuperar contraseña</h1>{sent ? <><Banner tone="info" title="Solicitud enviada">Si el correo corresponde a una cuenta, recibirás un enlace para restablecer tu contraseña. Revisa también spam.</Banner><button className="btn btn-primary btn-block" onClick={() => nav('/login')}>Volver al inicio de sesión</button></> : <form onSubmit={submit} className="stack"><p className="muted">Escribe el correo electrónico con el que te inscribiste.</p><Field label="Correo electrónico" required><input className="input" type="email" autoComplete="email" value={email} onChange={e=>setEmail(e.target.value)} required /></Field>{err && <Banner tone="bad" title="No se pudo enviar">{err}</Banner>}<button className="btn btn-primary btn-block" disabled={busy}>{busy ? <Spinner/> : 'Enviar enlace de recuperación'}</button><Link to="/login" className="btn btn-block">Volver</Link></form>}</div></div></div>
+}
+
+export function ResetPassword() {
+  const [password,setPassword]=useState(''); const [confirm,setConfirm]=useState(''); const [busy,setBusy]=useState(false); const [err,setErr]=useState(''); const [done,setDone]=useState(false)
+  const submit=async(e:React.FormEvent)=>{e.preventDefault();setErr('');if(password.length<6){setErr('La contraseña debe tener al menos 6 caracteres.');return}if(password!==confirm){setErr('Las contraseñas no coinciden.');return}if(!supabase){setErr('Supabase no está configurado.');return}setBusy(true);const {error}=await supabase.auth.updateUser({password});setBusy(false);if(error)setErr(error.message);else{setDone(true);await supabase.auth.signOut()}}
+  return <div className="auth-wrap" style={{gridTemplateColumns:'minmax(0,1fr)'}}><div className="auth-form-side"><div className="auth-card" style={{maxWidth:480}}><div className="brand-mini"><img src={`${import.meta.env.BASE_URL}img/logo.png`} alt="Logo"/></div><h1>Establecer nueva contraseña</h1>{done?<><Banner tone="info" title="Contraseña actualizada">Ya puedes iniciar sesión con tu nueva contraseña.</Banner><Link to="/login" className="btn btn-primary btn-block">Ir a iniciar sesión</Link></>:<form className="stack" onSubmit={submit}><Field label="Nueva contraseña" required hint="Mínimo 6 caracteres"><input className="input" type="password" value={password} onChange={e=>setPassword(e.target.value)} required minLength={6}/></Field><Field label="Confirmar contraseña" required><input className="input" type="password" value={confirm} onChange={e=>setConfirm(e.target.value)} required/></Field>{err&&<Banner tone="bad" title="No se pudo actualizar">{err}</Banner>}<button className="btn btn-primary btn-block" disabled={busy}>{busy?<Spinner/>:'Guardar nueva contraseña'}</button></form>}</div></div></div>
 }
 
 export function Register() {
