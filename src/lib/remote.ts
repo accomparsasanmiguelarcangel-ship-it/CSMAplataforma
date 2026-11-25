@@ -105,6 +105,8 @@ export const cloud = {
   async updateParticipant(id: string, patch: Partial<Participant>) {
     if (!can() || !supabase) return
     const allowed = {
+      dni: patch.dni, first_names: patch.first_names, last_names: patch.last_names,
+      phone: patch.phone, address: patch.address, group_name: patch.group_name, notes: patch.notes,
       participation_type: patch.participation_type, birth_date: patch.birth_date,
       fee_amount: patch.fee_amount, fee_adjustment_reason: patch.fee_adjustment_reason,
       fee_adjusted_by: patch.fee_adjusted_by, fee_adjusted_at: patch.fee_adjusted_at,
