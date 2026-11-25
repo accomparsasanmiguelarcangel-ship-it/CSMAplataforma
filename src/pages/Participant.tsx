@@ -896,7 +896,7 @@ export function PEvents() {
               <p className="tiny muted">{e.description}</p>
               <div className="divider" />
               <dl className="kv">
-                <dt>Lugar</dt><dd>{e.place || 'Ubicación no especificada'}{(e.map_url || e.place) && <div style={{ marginTop: 6 }}><a className="btn btn-sm" href={e.map_url || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.place)}`} target="_blank" rel="noopener noreferrer">📍 Ver ubicación en Google Maps</a></div>}</dd>
+                <dt>Lugar</dt><dd>{e.place || 'Ubicación no especificada'}{(e.map_url || e.place) && <div style={{ marginTop: 6 }}><a className="btn btn-sm" href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(e.place || e.name)}`} target="_blank" rel="noopener noreferrer">📍 Ver ubicación en Google Maps</a><div style={{marginTop:8,borderRadius:10,overflow:"hidden"}}><iframe title={`Mapa: ${e.name}`} width="100%" height="220" loading="lazy" src={`https://maps.google.com/maps?q=${encodeURIComponent(e.place || e.name)}&output=embed`} style={{border:0}} /></div></div>}</dd>
                 <dt>Horario</dt><dd>{timeOnly(e.starts_at)} – {timeOnly(e.ends_at)}</dd>
                 <dt>Jornadas</dt><dd>{sessions.length || 1}</dd>
                 {e.requires_payment && <><dt>Requisito de pago</dt><dd>{money(e.min_paid_amount)} validados</dd></>}
