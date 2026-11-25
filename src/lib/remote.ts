@@ -110,6 +110,7 @@ export const cloud = {
       participation_type: patch.participation_type, birth_date: patch.birth_date,
       fee_amount: patch.fee_amount, fee_adjustment_reason: patch.fee_adjustment_reason,
       fee_adjusted_by: patch.fee_adjusted_by, fee_adjusted_at: patch.fee_adjusted_at,
+      photo_storage_path: patch.photo_storage_path, photo_drive_id: patch.photo_drive_id,
     }
     const payload = Object.fromEntries(Object.entries(allowed).filter(([, value]) => value !== undefined))
     const { data, error } = await supabase.from('participants').update(payload).eq('id', id).select('id').maybeSingle()
