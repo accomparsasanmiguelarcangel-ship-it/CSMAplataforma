@@ -463,7 +463,7 @@ export function AdminParticipantDetail() {
       <Modal open={feeModal} onClose={() => { if (!feeSaving) setFeeModal(false) }} title="Editar datos y cuota del participante"
         footer={<>
           <button className="btn" disabled={feeSaving} onClick={() => setFeeModal(false)}>Cancelar</button>
-          <button className="btn btn-primary" disabled={feeSaving || (feeValue.trim() !== '' && (!Number.isFinite(Number(feeValue)) || Number(feeValue) < 0 || Number(feeValue) > db.settings.total_amount)) || (feeValue.trim() !== '' && !feeReason.trim())}
+          <button className="btn btn-primary" disabled={feeSaving || editDni.length !== 8 || !editFirstNames.trim() || !editLastNames.trim() || !editPhone.trim() || (feeValue.trim() !== '' && (!Number.isFinite(Number(feeValue)) || Number(feeValue) < 0 || Number(feeValue) > db.settings.total_amount)) || (feeValue.trim() !== '' && !feeReason.trim())}
             onClick={async () => {
               setFeeError('')
               if (feeValue.trim() !== '' && !feeReason.trim()) { setFeeError('Indica el motivo de la rebaja o condonación.'); return }
@@ -488,7 +488,7 @@ export function AdminParticipantDetail() {
         </>}>
         <div className="stack">
           <div className="form-grid">
-            <Field label="DNI (8 dígitos)"><input className="input" value={editDni} maxLength={8} onChange={(e) => setEditDni(e.target.value.replace(/\\D/g, '').slice(0,8))} /></Field>
+            <Field label="DNI (8 dígitos)"><input className="input" value={editDni} maxLength={8} onChange={(e) => setEditDni(e.target.value.replace(/[^0-9]/g, '').slice(0,8))} /></Field>
             <Field label="Nombres"><input className="input" value={editFirstNames} onChange={(e) => setEditFirstNames(e.target.value)} /></Field>
             <Field label="Apellidos"><input className="input" value={editLastNames} onChange={(e) => setEditLastNames(e.target.value)} /></Field>
             <Field label="Celular"><input className="input" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} /></Field>
