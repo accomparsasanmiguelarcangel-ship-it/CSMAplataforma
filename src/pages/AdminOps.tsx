@@ -255,7 +255,7 @@ function MapPinPicker({value,place,onChange}:{value:string;place:string;onChange
       }
       if(disposed)return; const L=(window as any).L;
       let lat=-12.0453,lng=-77.0308;const parsed=value.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);if(parsed){lat=Number(parsed[1]);lng=Number(parsed[2])}
-      if(!mapObj.current){mapObj.current=L.map(mapRef.current).setView([lat,lng],parsed?16:13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(mapObj.current);mapObj.current.on('click',(e:any)=>{const point=e.latlng;markerRef.current?markerRef.current.setLatLng(point):markerRef.current=L.marker(point).addTo(mapObj.current);onChange(point.lat.toFixed(6)+', '+point.lng.toFixed(6)});)}
+      if(!mapObj.current){mapObj.current=L.map(mapRef.current).setView([lat,lng],parsed?16:13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(mapObj.current);mapObj.current.on('click',(e:any)=>{const point=e.latlng;markerRef.current?markerRef.current.setLatLng(point):markerRef.current=L.marker(point).addTo(mapObj.current);onChange(point.lat.toFixed(6)+', '+point.lng.toFixed(6));)}
       if(parsed){markerRef.current?markerRef.current.setLatLng([lat,lng]):markerRef.current=L.marker([lat,lng]).addTo(mapObj.current);mapObj.current.setView([lat,lng],16)}
       setStatus('Haz clic directamente sobre el mapa para colocar o mover el pin.');
     };
