@@ -87,7 +87,7 @@ export default function App() {
             <Route path="usuarios" element={<AdminUsers />} />
             <Route path="configuracion" element={<AdminSettings />} />
             <Route path="auditoria" element={<AdminAudit />} />
-            <Route path="bajas" element={<AdminParticipantArchives />} />
+            <Route path="bajas" element={<Guard roles={["superadmin", "admin"]}><AdminParticipantArchives /></Guard>} />
           </Route>
 
           <Route path="/escaner" element={<Guard roles={['superadmin', 'admin', 'controlador']}><Shell /></Guard>}>
