@@ -35,7 +35,7 @@ export default function Shell() {
     { to: '/admin/reportes', label: 'Reportes', icon: 'download' },
     { to: '/admin/usuarios', label: 'Usuarios y roles', icon: 'shield' },
     { to: '/admin/configuracion', label: 'Configuración', icon: 'settings' },
-    { to: '/admin/auditoria', label: 'Historial de operaciones', icon: 'history' },
+    { to: '/admin/auditoria', label: 'Historial de operaciones', icon: 'history' },\n    { to: '/admin/bajas', label: 'Expedientes de bajas', icon: 'archive' },
   ]
 
   const controlNav: NavEntry[] = [
