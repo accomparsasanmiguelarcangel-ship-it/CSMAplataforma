@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { supabase } from '../lib/supabase'
 import {
@@ -255,6 +255,7 @@ export function AdminParticipants() {
 /* ── FICHA INDIVIDUAL ───────────────────────────────────────────────────── */
 export function AdminParticipantDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { db, user, account, paymentsOf, attendanceOf, reviewsOf, setEnrollmentStatus, updateParticipant } = useStore()
   const p = db.participants.find((x) => x.id === id)
   const [tab, setTab] = useState<'resumen' | 'pagos' | 'asistencias' | 'qr'>('resumen')
@@ -266,6 +267,13 @@ export function AdminParticipantDetail() {
   const [feeValue, setFeeValue] = useState('')
   const [editParticipation, setEditParticipation] = useState<NonNullable<Participant['participation_type']>>('Mujer')
   const [editBirthDate, setEditBirthDate] = useState('')
+  const [editDni, setEditDni] = useState('')
+  const [editFirstNames, setEditFirstNames] = useState('')
+  const [editLastNames, setEditLastNames] = useState('')
+  const [editPhone, setEditPhone] = useState('')
+  const [editAddress, setEditAddress] = useState('')
+  const [editGroup, setEditGroup] = useState('')
+  const [editNotes, setEditNotes] = useState('')
   const [feeReason, setFeeReason] = useState('')
   const [feeSaving, setFeeSaving] = useState(false)
   const [feeError, setFeeError] = useState('')
@@ -289,6 +297,19 @@ export function AdminParticipantDetail() {
         <Badge tone={statusTone(p.status)}>{enrollmentStatusLabel[p.status]}</Badge>
         <button className="btn" onClick={() => { setNewStatus(p.status); setNote(p.notes || ''); setStatusModal(true) }}>
           <Icon name="edit" size={15} /> Cambiar estado
+        </button>
+        <button className="btn" style={{ color: 'var(--danger)' }} onClick={async () => {
+          if (!supabase) { alert('Esta acción requiere conexión a Supabase.'); return }
+          if (!window.confirm('Dar de baja definitivamente al participante? Se archivará el expediente y se eliminará su ficha operativa y cuenta de acceso, liberando DNI y correo.')) return
+          const code = window.prompt('Escribe el código exacto del participante para confirmar la baja:', p.code)
+          if (code !== p.code) { if (code !== null) alert('Código incorrecto. No se realizó la baja.'); return }
+          const { data, error } = await supabase.rpc('archive_and_remove_participant', { p_participant_id: p.id, p_expected_code: code })
+          if (error) { alert('No se pudo dar de baja: ' + error.message); return }
+          alert('Baja realizada. Expediente archivado: ' + data)
+          navigate('/admin/participantes')
+          window.location.reload()
+        }}>
+          <Icon name="trash" size={15} /> Dar de baja / archivar
         </button>
       </div>
 
@@ -336,7 +357,7 @@ export function AdminParticipantDetail() {
           <SectionCard title="Estado de cuenta">
             <div className="row wrap" style={{ justifyContent: 'space-between', marginBottom: 8 }}>
               <div className="tiny muted">Costo asignado: <b>{money(acc.total_amount)}</b>{p.fee_amount !== null && p.fee_amount !== undefined ? ' · Monto especial' : ' · Monto general'}</div>
-              <button className="btn btn-sm" onClick={() => { setFeeValue(p.fee_amount === null || p.fee_amount === undefined ? '' : String(p.fee_amount)); setEditParticipation(p.participation_type || 'Mujer'); setEditBirthDate(p.birth_date || ''); setFeeReason(p.fee_adjustment_reason || ''); setFeeError(''); setFeeModal(true) }}>
+              <button className="btn btn-sm" onClick={() => { setFeeValue(p.fee_amount === null || p.fee_amount === undefined ? '' : String(p.fee_amount)); setEditParticipation(p.participation_type || 'Mujer'); setEditBirthDate(p.birth_date || ''); setEditDni(p.dni); setEditFirstNames(p.first_names); setEditLastNames(p.last_names); setEditPhone(p.phone); setEditAddress(p.address); setEditGroup(p.group_name); setEditNotes(p.notes || ''); setFeeReason(p.fee_adjustment_reason || ''); setFeeError(''); setFeeModal(true) }}>
                 <Icon name="edit" size={13} /> Ajustar / condonar
               </button>
             </div>
@@ -456,7 +477,7 @@ export function AdminParticipantDetail() {
       <Modal open={feeModal} onClose={() => { if (!feeSaving) setFeeModal(false) }} title="Editar datos y cuota del participante"
         footer={<>
           <button className="btn" disabled={feeSaving} onClick={() => setFeeModal(false)}>Cancelar</button>
-          <button className="btn btn-primary" disabled={feeSaving || (feeValue.trim() !== '' && (!Number.isFinite(Number(feeValue)) || Number(feeValue) < 0 || Number(feeValue) > db.settings.total_amount)) || (feeValue.trim() !== '' && !feeReason.trim())}
+          <button className="btn btn-primary" disabled={feeSaving || editDni.length !== 8 || !editFirstNames.trim() || !editLastNames.trim() || !editPhone.trim() || (feeValue.trim() !== '' && (!Number.isFinite(Number(feeValue)) || Number(feeValue) < 0 || Number(feeValue) > db.settings.total_amount)) || (feeValue.trim() !== '' && !feeReason.trim())}
             onClick={async () => {
               setFeeError('')
               if (feeValue.trim() !== '' && !feeReason.trim()) { setFeeError('Indica el motivo de la rebaja o condonación.'); return }
@@ -465,6 +486,8 @@ export function AdminParticipantDetail() {
               const result = await updateParticipant(p.id, {
                 participation_type: editParticipation,
                 birth_date: editBirthDate || null,
+                dni: editDni.trim(), first_names: editFirstNames.trim(), last_names: editLastNames.trim(),
+                phone: editPhone.trim(), address: editAddress.trim(), group_name: editGroup.trim(), notes: editNotes.trim() || null,
                 fee_amount: amount,
                 fee_adjustment_reason: amount === null ? null : feeReason.trim(),
                 fee_adjusted_by: amount === null ? null : user?.profile.id || null,
@@ -479,6 +502,12 @@ export function AdminParticipantDetail() {
         </>}>
         <div className="stack">
           <div className="form-grid">
+            <Field label="DNI (8 dígitos)"><input className="input" value={editDni} maxLength={8} onChange={(e) => setEditDni(e.target.value.replace(/[^0-9]/g, '').slice(0,8))} /></Field>
+            <Field label="Nombres"><input className="input" value={editFirstNames} onChange={(e) => setEditFirstNames(e.target.value)} /></Field>
+            <Field label="Apellidos"><input className="input" value={editLastNames} onChange={(e) => setEditLastNames(e.target.value)} /></Field>
+            <Field label="Celular"><input className="input" value={editPhone} onChange={(e) => setEditPhone(e.target.value)} /></Field>
+            <Field label="Dirección"><input className="input" value={editAddress} onChange={(e) => setEditAddress(e.target.value)} /></Field>
+            <Field label="Grupo / delegación"><input className="input" value={editGroup} onChange={(e) => setEditGroup(e.target.value)} /></Field>
             <Field label="Participación">
               <select className="select" value={editParticipation} onChange={(e) => setEditParticipation(e.target.value as NonNullable<Participant['participation_type']>)}>
                 <option value="Mujer">Mujer</option><option value="Varón">Varón</option><option value="Músico">Músico</option><option value="Gala">Gala</option>
@@ -496,6 +525,7 @@ export function AdminParticipantDetail() {
             <textarea className="textarea" value={feeReason} onChange={(e) => setFeeReason(e.target.value)} placeholder="Ej. Apoyo aprobado por la directiva." />
           </Field>}
           {feeValue.trim() !== '' && Number(feeValue) > db.settings.total_amount && <Banner tone="bad" title="Monto no válido">La cuota ajustada no puede superar el monto general de {money(db.settings.total_amount)}.</Banner>}
+          <Field label="Observaciones"><textarea className="textarea" value={editNotes} onChange={(e) => setEditNotes(e.target.value)} /></Field>
           {feeError && <Banner tone="bad" title="No se pudo guardar">{feeError}</Banner>}
         </div>
       </Modal>

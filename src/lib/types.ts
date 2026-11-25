@@ -109,6 +109,7 @@ export interface EventItem {
   name: string
   description: string
   place: string
+  map_url?: string
   starts_at: string
   ends_at: string
   late_after?: string
