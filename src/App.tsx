@@ -4,7 +4,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { StoreProvider, useStore } from './lib/store'
 import { ToastProvider } from './components/ui'
 import Shell from './components/Shell'
-import { Login, Register, Welcome } from './pages/Auth'
+import { Login, Register, Welcome, RecoverPassword, ResetPassword } from './pages/Auth'
 import {
   PHome, PProfile, PEnrollment, PPayments, PNewPayment, PQR,
   PAttendance, PDocuments, PAnnouncements, PEvents,
@@ -51,7 +51,7 @@ export default function App() {
       <ToastProvider>
         <Routes>
           <Route path="/" element={<HomeRedirect />} />
-          <Route path="/login" element={<Login />} />
+          <Route path="/login" element={<Login />} />\n          <Route path="/recuperar-clave" element={<RecoverPassword />} />\n          <Route path="/restablecer-clave" element={<ResetPassword />} />
           <Route path="/registro" element={<Register />} />
 
           <Route path="/app" element={<Guard roles={['participante']}><Shell /></Guard>}>
