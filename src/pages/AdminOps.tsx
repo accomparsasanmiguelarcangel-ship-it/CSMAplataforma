@@ -242,6 +242,30 @@ const emptyEvent = (): EventItem => ({
   min_paid_amount: 0, active: true,
 })
 
+function MapPinPicker({value,place,onChange}:{value:string;place:string;onChange:(v:string)=>void}) {
+  const mapRef=useRef<HTMLDivElement|null>(null), mapObj=useRef<any>(null), markerRef=useRef<any>(null);
+  const [status,setStatus]=useState('Cargando mapa…');
+  useEffect(()=>{
+    let disposed=false;
+    const init=async()=>{
+      if(!mapRef.current)return;
+      if(!(window as any).L){
+        if(!document.querySelector('link[data-leaflet-css]')){const link=document.createElement('link');link.rel='stylesheet';link.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';link.dataset.leafletCss='1';document.head.appendChild(link)}
+        await new Promise<void>((resolve,reject)=>{const existing=document.querySelector('script[data-leaflet-js]') as HTMLScriptElement|null;if(existing){if((window as any).L)resolve();else existing.addEventListener('load',()=>resolve(),{once:true});return;}const script=document.createElement('script');script.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';script.dataset.leafletJs='1';script.onload=()=>resolve();script.onerror=()=>reject();document.head.appendChild(script)});
+      }
+      if(disposed)return; const L=(window as any).L;
+      let lat=-12.0453,lng=-77.0308;const parsed=value.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);if(parsed){lat=Number(parsed[1]);lng=Number(parsed[2])}
+      if(!mapObj.current){mapObj.current=L.map(mapRef.current).setView([lat,lng],parsed?16:13);L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'© OpenStreetMap'}).addTo(mapObj.current);mapObj.current.on('click',(e:any)=>{const point=e.latlng;markerRef.current?markerRef.current.setLatLng(point):markerRef.current=L.marker(point).addTo(mapObj.current);onChange(point.lat.toFixed(6)+', '+point.lng.toFixed(6)});)}
+      if(parsed){markerRef.current?markerRef.current.setLatLng([lat,lng]):markerRef.current=L.marker([lat,lng]).addTo(mapObj.current);mapObj.current.setView([lat,lng],16)}
+      setStatus('Haz clic directamente sobre el mapa para colocar o mover el pin.');
+    };
+    init().catch(()=>setStatus('No se pudo cargar el mapa. Revisa tu conexión.'));
+    return()=>{disposed=true};
+  },[]);
+  useEffect(()=>{const L=(window as any).L;if(mapObj.current&&L){const p=value.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);if(p){const ll=[Number(p[1]),Number(p[2])];markerRef.current?markerRef.current.setLatLng(ll):markerRef.current=L.marker(ll).addTo(mapObj.current);mapObj.current.setView(ll,16)}}},[value]);
+  return <div style={{gridColumn:'1 / -1'}}><div ref={mapRef} style={{height:360,border:'1px solid var(--line)',borderRadius:12,zIndex:0}}/><p className="tiny muted" style={{marginTop:8}}>{status} {value&&<b>Pin: {value}</b>}</p><a className="tiny" href={'https://www.openstreetmap.org/?mlat='+encodeURIComponent(value.split(',')[0]||'-12.0453')+'&mlon='+encodeURIComponent(value.split(',')[1]||'-77.0308')+'#map=16'} target="_blank" rel="noreferrer">Abrir ubicación seleccionada</a></div>;
+}
+
 export function AdminEvents() {
   const { db, saveEvent, deleteEvent, saveSession, deleteSession, account } = useStore()
   const toast = useToast()
@@ -345,8 +369,7 @@ export function AdminEvents() {
             <Field label="Descripción" full><textarea className="textarea" value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
             <Field label="Lugar o dirección" full><input className="input" value={edit.place} onChange={(e) => setEdit({ ...edit, place: e.target.value, map_url: '' })} placeholder="Dirección, local o punto de encuentro" /></Field>
             <Field label="Coordenadas exactas (opcional)" full hint="Para fijar un punto: abre Google Maps, mantén pulsado/clic sobre el lugar, copia las coordenadas que aparecen y pégalas aquí."><input className="input" value={edit.map_url?.startsWith('coords:') ? edit.map_url.slice(7) : ''} onChange={(e) => setEdit({...edit,map_url:e.target.value.trim()? 'coords:'+e.target.value.trim():''})} placeholder="Ej. -12.0453, -77.0308" /></Field>
-            <div style={{ gridColumn: '1 / -1', border: '1px solid var(--line)', borderRadius: 12, overflow: 'hidden', minHeight: 250 }}><iframe title="Vista previa de ubicación" width="100%" height="280" loading="lazy" src={`https://maps.google.com/maps?q=${encodeURIComponent(edit.map_url?.startsWith('coords:')?edit.map_url.slice(7):edit.place || edit.name)}&output=embed`} style={{ border: 0 }} /></div>
-            <div className="tiny muted"><a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(edit.place || edit.name)}`} target="_blank" rel="noreferrer">Buscar y seleccionar punto en Google Maps ↗</a> — copia las coordenadas del punto seleccionado y pégalas arriba para guardar el pin exacto.</div>
+            <MapPinPicker value={edit.map_url?.startsWith('coords:') ? edit.map_url.slice(7) : ''} place={edit.place || edit.name} onChange={(coords) => setEdit({...edit, map_url: coords ? 'coords:'+coords : ''})} />
             <Field label="Categorías (separadas por coma)" hint="Vacío = todas las categorías">
               <input className="input" value={edit.categories.join(', ')} onChange={(e) => setEdit({ ...edit, categories: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })} />
             </Field>
