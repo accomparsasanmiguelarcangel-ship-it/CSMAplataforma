@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { useStore } from '../lib/store'
 import { supabase } from '../lib/supabase'
 import {
@@ -255,6 +255,7 @@ export function AdminParticipants() {
 /* ── FICHA INDIVIDUAL ───────────────────────────────────────────────────── */
 export function AdminParticipantDetail() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { db, user, account, paymentsOf, attendanceOf, reviewsOf, setEnrollmentStatus, updateParticipant } = useStore()
   const p = db.participants.find((x) => x.id === id)
   const [tab, setTab] = useState<'resumen' | 'pagos' | 'asistencias' | 'qr'>('resumen')
@@ -296,6 +297,19 @@ export function AdminParticipantDetail() {
         <Badge tone={statusTone(p.status)}>{enrollmentStatusLabel[p.status]}</Badge>
         <button className="btn" onClick={() => { setNewStatus(p.status); setNote(p.notes || ''); setStatusModal(true) }}>
           <Icon name="edit" size={15} /> Cambiar estado
+        </button>
+        <button className="btn" style={{ color: 'var(--danger)' }} onClick={async () => {
+          if (!supabase) { alert('Esta acción requiere conexión a Supabase.'); return }
+          if (!window.confirm('Dar de baja definitivamente al participante? Se archivará el expediente y se eliminará su ficha operativa y cuenta de acceso, liberando DNI y correo.')) return
+          const code = window.prompt('Escribe el código exacto del participante para confirmar la baja:', p.code)
+          if (code !== p.code) { if (code !== null) alert('Código incorrecto. No se realizó la baja.'); return }
+          const { data, error } = await supabase.rpc('archive_and_remove_participant', { p_participant_id: p.id, p_expected_code: code })
+          if (error) { alert('No se pudo dar de baja: ' + error.message); return }
+          alert('Baja realizada. Expediente archivado: ' + data)
+          navigate('/admin/participantes')
+          window.location.reload()
+        }}>
+          <Icon name="trash" size={15} /> Dar de baja / archivar
         </button>
       </div>
 
